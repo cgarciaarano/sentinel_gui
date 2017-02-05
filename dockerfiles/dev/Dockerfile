@@ -8,10 +8,10 @@
 # Set the base image to Ubuntu
 FROM python:3.4-alpine
 
-MAINTAINER cgarciaarano@gmai.com
+MAINTAINER cgarciaarano@gmail.com
 
 # Update the repository sources list
-RUN apk update && apk add libffi-dev
+RUN apk update && apk add libffi-dev redis
 
 # Add requirements
 COPY requirements/ /opt/app/requirements/

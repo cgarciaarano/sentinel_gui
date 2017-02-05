@@ -23,7 +23,7 @@ services:
     depends_on: 
       - sentinel
       - redis-master
-    command: python manage.py runserver 0.0.0.0:8080
+    #command: python manage.py runserver 0.0.0.0:8080
     #network_mode: bridge
 
   redis-master:
@@ -34,17 +34,18 @@ services:
     image: redis:3.0-alpine
     depends_on: 
       - redis-master
-    ports:
-      - "6380:6379"
+ #   ports:
+ #     - "6380:6379"
     command: redis-server --slaveof redis-master 6379
 
   sentinel:
     image: redis:3.0-alpine
-    container_name: sentinel
     depends_on: 
       - redis-master
-    ports:
-      - "26379:26379"
+    expose:
+      - "26379"
+#    ports:
+#      - "26379:26379"
     volumes:
-      - ../../sentinel/sentinel.conf:/etc/redis/sentinel.conf
+      - ../../dockerfiles/dev/sentinel/sentinel.conf:/etc/redis/sentinel.conf
     command: redis-sentinel /etc/redis/sentinel.conf
