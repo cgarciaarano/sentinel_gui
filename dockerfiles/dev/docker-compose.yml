@@ -34,8 +34,6 @@ services:
     image: redis:3.0-alpine
     depends_on: 
       - redis-master
- #   ports:
- #     - "6380:6379"
     command: redis-server --slaveof redis-master 6379
 
   sentinel:
@@ -44,8 +42,6 @@ services:
       - redis-master
     expose:
       - "26379"
-#    ports:
-#      - "26379:26379"
     volumes:
       - ../../dockerfiles/dev/sentinel/sentinel.conf:/etc/redis/sentinel.conf
     command: redis-sentinel /etc/redis/sentinel.conf
