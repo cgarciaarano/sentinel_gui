@@ -23,7 +23,7 @@ services:
     depends_on: 
       - sentinel
       - redis-master
-    #command: python manage.py runserver 0.0.0.0:8080
+    command: /bin/sh run.sh
     #network_mode: bridge
 
   redis-master:
