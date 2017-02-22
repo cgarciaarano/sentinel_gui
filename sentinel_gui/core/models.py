@@ -91,6 +91,8 @@ class SentinelMaster(object):
         """
         Update internal __dict__
         """
+        self.master = None
+        self.slaves = {}
         self.discover_master()
         self.discover_slaves()
         self.discover_sentinels()

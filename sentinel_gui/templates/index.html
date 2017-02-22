@@ -1,17 +1,36 @@
 {% extends "base.html" %}
 {% block content %}
-    <h3>Discovered masters</h3>
+    <h2>Discovered masters</h2>
+    <div><a href="javascript:update('update');">{{ _('Update') }}</a></div>
+    <p><strong><span id="update">{{ masters }}</span></strong></p>
     {% for master, master_data in masters.items() %}
-    	<div>
-    		<h4>{{ master }}</h4>
-    		<div>  			
-    			<p> Master data: </p>
-    			<ul>
-    			{% for key, value in master_data.__dict__.items() %}
-    				<li>{{ key }} = {{ value }} </li>
-    			{% endfor %}
-    			</ul>
-    		</div>
-    	</div>
+        <!-- Master grid-->
+        <div class="row">
+            <div  class="col-md-7">
+                <h3>{{ master }}</h3>
+                <div class="row">
+                    <div  class="col-md-4">
+                        <p>Master Node:</p>
+                        <p>{{ master_data.master }}</p>
+                    </div>
+                </div>
+                <div class="row">
+                    <p>Slaves:</p>
+                    {% for slave_name, slave_data in master_data.slaves.items() %}
+                    <div  class="col-md-4">
+                        <p>{{ slave_data }}</p>
+                    </div>
+                   {% endfor %}
+                </div>
+    			<div class="row">
+                    <p>Sentinels:</p>
+                    {% for sentinel_name, sentinel_data in master_data.sentinels.items() %}
+                    <div  class="col-md-4">
+                        <p>{{ sentinel_data }}</p>
+                    </div>
+                   {% endfor %}
+                </div>
+            </div>
+        </div>
     {% endfor %}
 {% endblock %}
