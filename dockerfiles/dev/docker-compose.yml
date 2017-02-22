@@ -44,5 +44,5 @@ services:
     expose:
       - "26379"
     volumes:
-      - ../../dockerfiles/dev/sentinel/sentinel.conf:/etc/redis/sentinel.conf:ro
+      - ../../dockerfiles/dev/sentinel/sentinel.conf:/etc/redis/sentinel.conf
     command: redis-sentinel /etc/redis/sentinel.conf
