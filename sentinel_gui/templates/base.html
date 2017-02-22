@@ -25,18 +25,6 @@
     {% else %}
     <title>Welcome to Sentinel GUI</title>
     {% endif %}
-    <script>
-    function update(placeholder) {
-    $.post('/update', {
-    }).done(function() {
-        $(placeholder).text(masters)
-        $(placeholder).show();
-    }).fail(function() {
-        $(placeholder).text("{{ _('Error: Could not contact server.') }}");
-        $(placeholder).show();
-    });
-}
-</script>
   </head>
 
   <body>
@@ -67,5 +55,17 @@
     <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
     <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
     <script src="../../static/js/ie10-viewport-bug-workaround.js"></script>
+    <script>
+    function update(placeholder) {
+    $.post('/update', {
+    }).done(function() {
+        $(placeholder).text(masters)
+        $(placeholder).show();
+    }).fail(function() {
+        $(placeholder).text("Error: Could not contact server.");
+        $(placeholder).show();
+    });
+    }
+    </script>
   </body>
 </html>
