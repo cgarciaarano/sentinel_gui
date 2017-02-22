@@ -15,6 +15,8 @@ services:
     environment:
       - SENTINEL_SERVER=sentinel
       - SENTINEL_PORT=26379
+      - FLASK_DEBUG=1
+      - FLASK_APP=sentinel_gui/web.py
     ports:
       - "8080:8080"
     volumes:
@@ -23,8 +25,7 @@ services:
     depends_on: 
       - sentinel
       - redis-master
-    command: /bin/sh run.sh
-    #network_mode: bridge
+    command: flask run --host=0.0.0.0 --port=8080
 
   redis-master:
     image: redis:3.0-alpine

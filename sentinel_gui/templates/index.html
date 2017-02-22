@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block content %}
+    <p>Here goes the sentinel nodes</p>
+    {% for post in posts %}
+    <div><p>{{ post.author.nickname }} says: <b>{{ post.body }}</b></p></div>
+    {% endfor %}
+{% endblock %}
