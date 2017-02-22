@@ -176,10 +176,16 @@ class SentinelManager():
                 self.masters[master_name].discover()
 
     def get_masters(self):
+        """
+        Return the current masters configuration. Should be smarter.
+        """
         self.update()
         return self.masters
 
     def update(self):
+        """
+        Updates the masters information. Should be smarter.
+        """
         for master_name in self.masters.keys():
             # Perform discovery on the given master
             self.masters[master_name].discover()
