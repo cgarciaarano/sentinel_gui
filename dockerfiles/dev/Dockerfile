@@ -1,5 +1,5 @@
 ############################################################
-# Dockerfile to build gitlabhub DEV environment.
+# Dockerfile to build DEV environment.
 # Project dir is mounted
 #
 # Based on Alpine Python 3.4

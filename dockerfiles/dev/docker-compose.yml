@@ -38,11 +38,12 @@ services:
     command: redis-server --slaveof redis-master 6379
 
   sentinel:
-    image: redis:3.0-alpine
+    build:
+      context: ../../  # Root of project
+      dockerfile: dockerfiles/dev/sentinel/Dockerfile
+    image: cgarciaarano/redis-sentinel:dev
     depends_on: 
       - redis-master
     expose:
       - "26379"
-    volumes:
-      - ../../dockerfiles/dev/sentinel/sentinel.conf:/etc/redis/sentinel.conf
     command: redis-sentinel /etc/redis/sentinel.conf
