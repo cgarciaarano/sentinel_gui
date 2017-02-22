@@ -164,7 +164,7 @@ class SentinelManager():
         sentinel = SentinelNode(host=host, port=port)
 
         # Discover masters in the given sentinel.
-        for master_name, master_data in sentinel.discover_masters().items():
+        for master_name in sentinel.discover_masters().keys():
             # If not discovered yet, add it
             if not master_name in self.masters:
                 self.masters[master_name] = SentinelMaster(master_name)
@@ -174,3 +174,12 @@ class SentinelManager():
 
                 # Perform discovery on the given master
                 self.masters[master_name].discover()
+
+    def get_masters(self):
+        self.update()
+        return self.masters
+
+    def update(self):
+        for master_name in self.masters.keys():
+            # Perform discovery on the given master
+            self.masters[master_name].discover()

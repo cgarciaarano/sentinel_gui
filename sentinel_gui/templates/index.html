@@ -1,7 +1,17 @@
 {% extends "base.html" %}
 {% block content %}
-    <p>Here goes the sentinel nodes</p>
-    {% for post in posts %}
-    <div><p>{{ post.author.nickname }} says: <b>{{ post.body }}</b></p></div>
+    <h3>Discovered masters</h3>
+    {% for master, master_data in masters.items() %}
+    	<div>
+    		<h4>{{ master }}</h4>
+    		<div>  			
+    			<p> Master data: </p>
+    			<ul>
+    			{% for key, value in master_data.__dict__.items() %}
+    				<li>{{ key }} = {{ value }} </li>
+    			{% endfor %}
+    			</ul>
+    		</div>
+    	</div>
     {% endfor %}
 {% endblock %}
