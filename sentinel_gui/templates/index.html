@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block content %}
     <h2>Discovered masters</h2>
-    <div><a href="javascript:update('update');">Update</a></div>
+    <div><a href="javascript:update('#update');">Update</a></div>
     <p><strong><span id="update">{{ masters }}</span></strong></p>
     {% for master, master_data in masters.items() %}
         <!-- Master grid-->

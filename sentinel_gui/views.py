@@ -16,4 +16,4 @@ def index():
 def update():
     sentinel_masters = sentinel_manager.get_masters()
 
-    return jsonify({'masters': sentinel_masters})
+    return jsonify(masters=list(sentinel_masters.keys()))
