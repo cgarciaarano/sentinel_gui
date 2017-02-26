@@ -1,9 +1,8 @@
 {% extends "base.html" %}
 {% block content %}
     <h2>Discovered masters</h2>
-    <div><a href="javascript:update('#update');">Update</a></div>
-    <p><strong><span id="update">{{ masters }}</span></strong></p>
-    {% for master, master_data in masters.items() %}
+    <div><a href="javascript:update_manager();">Update</a></div>
+    {% for master in masters %}
         <!-- Master grid-->
         <div class="row">
             <div  class="col-md-7">
@@ -11,26 +10,27 @@
                 <div class="row">
                     <div  class="col-md-4">
                         <p>Master Node:</p>
-                        <p>{{ master_data.master }}</p>
+                        <span id="master_{{ master.master_node }}"></span>
                     </div>
                 </div>
                 <div class="row">
                     <p>Slaves:</p>
-                    {% for slave_name, slave_data in master_data.slaves.items() %}
+                    {% for slave in master.slaves %}
                     <div  class="col-md-4">
-                        <p>{{ slave_data }}</p>
+                        <span id="slave_{{ slave }}"></span>
                     </div>
                    {% endfor %}
                 </div>
     			<div class="row">
                     <p>Sentinels:</p>
-                    {% for sentinel_name, sentinel_data in master_data.sentinels.items() %}
+                    {% for sentinel in master.sentinels %}
                     <div  class="col-md-4">
-                        <p>{{ sentinel_data }}</p>
+                        <span id="sentinel_{{ sentinel }}"></span>
                     </div>
                    {% endfor %}
                 </div>
             </div>
         </div>
     {% endfor %}
+    </span>
 {% endblock %}

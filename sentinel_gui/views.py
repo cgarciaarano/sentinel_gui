@@ -14,6 +14,6 @@ def index():
 
 @app.route('/update', methods=['POST'])
 def update():
-    sentinel_masters = sentinel_manager.get_masters()
+    sentinel_manager.update()
 
-    return jsonify(masters=list(sentinel_masters.keys()))
+    return jsonify(sentinel_manager.serialize())
