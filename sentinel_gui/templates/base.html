@@ -40,6 +40,7 @@
 
       <div class="starter-template">
         <h1>Redis Sentinel Installation</h1>
+
         {% block content %}{% endblock %}
       </div>
 
@@ -56,14 +57,12 @@
     <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
     <script src="../../static/js/ie10-viewport-bug-workaround.js"></script>
     <script>
-    function update(placeholder) {
+    function update_manager() {
         $.post('/update', {
         }).done(function(masters) {
-            $(placeholder).text(masters);
-            $(placeholder).show();
-        }).fail(function() {
-            $(placeholder).text("Error: Could not contact server.");
-            $(placeholder).show();
+            $.each(masters, function(master_name, master_data){
+                $('#master_' + master_name).text = master_name + ' dynamic';
+            });
         });
     }
     </script>
