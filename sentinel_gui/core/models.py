@@ -20,7 +20,7 @@ class RedisNode(object):
         self.conn = StrictRedis(host=host, port=port, **kwargs)
         self.metadata = metadata
         self.host = socket.gethostbyaddr(host)[0]
-        self.name = '{host}:{port}'.format(host=self.host, port=self.conn.connection_pool.connection_kwargs['port'])
+        self.unique_name = '{host}:{port}'.format(host=self.host, port=self.conn.connection_pool.connection_kwargs['port'])
         self.set_metadata(metadata)
 
     def set_metadata(self, metadata):
@@ -31,14 +31,14 @@ class RedisNode(object):
 
     def __str__(self):
         """ String representation host:port"""
-        return self.name
+        return self.unique_name
 
     def serialize(self):
         """
         Return JSON representation
-        E.g. {'name': NAME,... (metadata)}
+        E.g. {'unique_name': NAME,... (metadata)}
         """
-        return {'name': self.name}
+        return {'unique_name': self.unique_name, 'metadata': self.metadata}
 
 
 class SentinelNode(RedisNode):
@@ -135,33 +135,33 @@ class SentinelMaster():
         for sentinel in self.sentinels:
             master_data = sentinel.discover_master(self.name)
             if 'ip' in master_data and 'port' in master_data:
-                self.set_master_node(RedisNode(host=master_data['ip'], port=master_data['port']))
+                self.set_master_node(RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data))
 
     def discover_slaves(self):
         for sentinel in self.sentinels:
             for slave_data in sentinel.discover_slaves(self.name):
                 if 'ip' in slave_data and 'port' in slave_data:
-                    self.add_slave(RedisNode(host=slave_data['ip'], port=slave_data['port']))
+                    self.add_slave(RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data))
 
     def discover_sentinels(self):
         new_sentinels = []
         for sentinel in self.sentinels:
             for sentinel_data in sentinel.discover_sentinels(self.name):
                 if 'ip' in sentinel_data and 'port' in sentinel_data:
-                    new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port']))
+                    new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data))
 
         # We can't add new sentinels while looping self.sentinels
         map(self.add_sentinel, new_sentinels)
 
     def set_master_node(self, master_node):
-        if not self.master_node or master_node.name != self.master_node.name:
+        if not self.master_node or master_node.unique_name != self.master_node.unique_name:
             self.master_node = master_node
             print("Redis master node in now {0}".format(self.master_node))
         else:
             print("Redis master node {0} already set".format(self.master_node))
 
     def add_slave(self, slave):
-        if slave.name not in [old_slave.name for old_slave in self.slaves]:
+        if slave.unique_name not in [old_slave.unique_name for old_slave in self.slaves]:
             self.slaves.append(slave)
             print("New redis slave {0}".format(slave))
         else:
@@ -171,7 +171,7 @@ class SentinelMaster():
         """
         Add SentinelNode which are monitoring this master
         """
-        if sentinel.name not in [old_sentinel.name for old_sentinel in self.sentinels]:
+        if sentinel.unique_name not in [old_sentinel.unique_name for old_sentinel in self.sentinels]:
             self.sentinels.append(sentinel)
             print("New redis sentinel {0}".format(sentinel))
         else:
