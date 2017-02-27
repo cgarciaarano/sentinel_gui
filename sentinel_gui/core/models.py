@@ -2,7 +2,7 @@
 """
 models.py
 
-Definition of models for core module
+Definition of models for core module. It handles Redis nodes.
 
 @author Carlos Garcia <cgarciaarano@gmail.com>
 """
@@ -18,9 +18,10 @@ class RedisNode(object):
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
         self.conn = StrictRedis(host=host, port=port, **kwargs)
-        self.metadata = metadata
+        self._metadata = metadata
+        self.id = metadata['runid'] if 'runid' in metadata else '{host}:{port}'.format(host=host, port=port)
         self.host = socket.gethostbyaddr(host)[0]
-        self.unique_name = '{host}:{port}'.format(host=self.host, port=self.conn.connection_pool.connection_kwargs['port'])
+        self.unique_name = '{host}:{port}'.format(host=self.host, port=port)
         self.set_metadata(metadata)
 
     def set_metadata(self, metadata):
@@ -38,18 +39,24 @@ class RedisNode(object):
         Return JSON representation
         E.g. {'unique_name': NAME,... (metadata)}
         """
-        return {'unique_name': self.unique_name, 'metadata': self.metadata}
+        return {'unique_name': self.unique_name,
+                'id': self.id,
+                'metadata': self._metadata
+                }
 
 
 class SentinelNode(RedisNode):
 
     """
-    Represents a redis sentinel instance, it's a Redis connection and metadata.
+    Represents a redis sentinel instance, it's a Redis connection, metadata and a list of
+    managed masters.
     """
 
     def __init__(self, host='localhost', port=26379, metadata={}, **kwargs):
         super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, **kwargs)
 
+        self.id = self.conn.info()['run_id']
+        # References to the SentinelMasters managed by this node
         self.masters = []
 
     def serialize(self):
@@ -59,7 +66,7 @@ class SentinelNode(RedisNode):
         """
         json_info = super(SentinelNode, self).serialize()
 
-        json_info['masters'] = [master.serialize() for master in self.masters]
+        json_info['masters'] = [{'name': master.name} for master in self.masters]
 
         return json_info
 
@@ -87,6 +94,13 @@ class SentinelNode(RedisNode):
         Returns a list of sentinels, except self [{'sentinel1': data}, {'sentinel2': data}]
         """
         return self.conn.sentinel_sentinels(master_name)
+
+    def link_master(self, master):
+        """
+        Add a reference to the given master
+        """
+        if master not in self.masters:
+            self.masters.append(master)
 
 
 class SentinelMaster():
@@ -173,6 +187,8 @@ class SentinelMaster():
         """
         if sentinel.unique_name not in [old_sentinel.unique_name for old_sentinel in self.sentinels]:
             self.sentinels.append(sentinel)
+            # Add reference to the master in the sentinel node
+            sentinel.link_master(self)
             print("New redis sentinel {0}".format(sentinel))
         else:
             print("Redis sentinel {0} already added".format(sentinel))

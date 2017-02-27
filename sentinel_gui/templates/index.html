@@ -1,33 +1,39 @@
 {% extends "base.html" %}
 {% block content %}
-    <h2>Discovered masters</h2>
     <div><a href="javascript:update_manager();">Update</a></div>
-    {% for master in masters %}
+    <div><a href="/add_sentinel">Add Sentinel Node...</a></div>
+    <h2>Discovered masters</h2>
+    {% for master in manager['masters'] %}
         <!-- Master grid-->
         <div class="row">
-            <div  class="col-md-7">
-                <h3>{{ master }}</h3>
+            <div  class="col-md-8">
+                <h3><span id="master_{{ master.name }}">{{ master.name }}<span></h3>
+                <!-- Master node -->
+                <p><strong>Master Node:</strong></p>
                 <div class="row">
-                    <div  class="col-md-4">
-                        <p>Master Node:</p>
-                        <span id="master_{{ master.master_node }}"></span>
+                    <div class="col-md-4">
+                        <span id="masternode_{{ master.master_node.id }}">{{ master.master_node['unique_name'] }}</span>
                     </div>
                 </div>
+
+                <!-- Slaves -->
+                <p><strong>Slaves:</strong></p>
                 <div class="row">
-                    <p>Slaves:</p>
                     {% for slave in master.slaves %}
-                    <div  class="col-md-4">
-                        <span id="slave_{{ slave }}"></span>
+                    <div class="col-md-4">
+                        <span id="slave_{{ slave.id }}">{{ slave.unique_name }}</span>
                     </div>
                    {% endfor %}
                 </div>
-    			<div class="row">
-                    <p>Sentinels:</p>
+
+                <!-- Sentinels -->
+                <p><strong>Sentinels:</strong></p>
+                <div class="row">
                     {% for sentinel in master.sentinels %}
                     <div  class="col-md-4">
-                        <span id="sentinel_{{ sentinel }}"></span>
+                        <span id="sentinel_{{ sentinel.id }}">{{ sentinel.unique_name }}</span>
                     </div>
-                   {% endfor %}
+                    {% endfor %}
                 </div>
             </div>
         </div>
