@@ -11,6 +11,9 @@ from redis import StrictRedis
 from redis.exceptions import ConnectionError
 import logging
 
+logger = logging.getLogger('sentinel_gui')
+
+
 class RedisNode(object):
 
     """
@@ -54,7 +57,7 @@ class SentinelNode(RedisNode):
     """
 
     def __init__(self, host='localhost', port=26379, metadata={}, **kwargs):
-        super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, **kwargs)
+        super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, socket_timeout=0.1, **kwargs)
 
         self.id = self.conn.info()['run_id']
         # References to the SentinelMasters managed by this node
@@ -153,7 +156,7 @@ class SentinelMaster():
                 if 'ip' in master_data and 'port' in master_data:
                     self.set_master_node(RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data))
             except ConnectionError:
-                print("Connection error on {}".format(sentinel))
+                logger.error("Connection error on {}".format(sentinel))
                 self.remove_sentinel(sentinel)
                 continue
 
@@ -164,7 +167,7 @@ class SentinelMaster():
                     if 'ip' in slave_data and 'port' in slave_data:
                         self.add_slave(RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data))
             except ConnectionError:
-                print("Connection error on {}".format(sentinel))
+                logger.error("Connection error on {}".format(sentinel))
                 self.remove_sentinel(sentinel)
                 continue
 
@@ -176,7 +179,7 @@ class SentinelMaster():
                     if 'ip' in sentinel_data and 'port' in sentinel_data:
                         new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data))
             except ConnectionError:
-                print("Connection error on {}".format(sentinel))
+                logger.error("Connection error on {}".format(sentinel))
                 self.remove_sentinel(sentinel)
                 continue
 
@@ -186,16 +189,16 @@ class SentinelMaster():
     def set_master_node(self, master_node):
         if not self.master_node or master_node.unique_name != self.master_node.unique_name:
             self.master_node = master_node
-            print("Redis master node is now {0}".format(self.master_node))
+            logger.info("Redis master node is now {0}".format(self.master_node))
         else:
-            print("Redis master node {0} already set".format(self.master_node))
+            logger.info("Redis master node {0} already set".format(self.master_node))
 
     def add_slave(self, slave):
         if slave.unique_name not in [old_slave.unique_name for old_slave in self.slaves]:
             self.slaves.append(slave)
-            print("New redis slave {0}".format(slave))
+            logger.info("New redis slave {0}".format(slave))
         else:
-            print("Redis slave {0} already added".format(slave))
+            logger.info("Redis slave {0} already added".format(slave))
 
     def add_sentinel(self, sentinel):
         """
@@ -205,15 +208,15 @@ class SentinelMaster():
             self.sentinels.append(sentinel)
             # Add reference to the master in the sentinel node
             sentinel.link_master(self)
-            print("New redis sentinel {0}".format(sentinel))
+            logger.info("New redis sentinel {0}".format(sentinel))
         else:
-            print("Redis sentinel {0} already added".format(sentinel))
+            logger.info("Redis sentinel {0} already added".format(sentinel))
 
     def remove_sentinel(self, sentinel):
         """
         Remove sentinel host by reference
         """
-        print("Removing sentinel node {0}".format(sentinel))
+        logger.info("Removing sentinel node {0}".format(sentinel))
         self.sentinels.remove(sentinel)
 
 
