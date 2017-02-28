@@ -165,12 +165,12 @@ class SentinelMaster():
                     new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data))
 
         # We can't add new sentinels while looping self.sentinels
-        map(self.add_sentinel, new_sentinels)
+        [self.add_sentinel(sentinel) for sentinel in new_sentinels]
 
     def set_master_node(self, master_node):
         if not self.master_node or master_node.unique_name != self.master_node.unique_name:
             self.master_node = master_node
-            print("Redis master node in now {0}".format(self.master_node))
+            print("Redis master node is now {0}".format(self.master_node))
         else:
             print("Redis master node {0} already set".format(self.master_node))
 
