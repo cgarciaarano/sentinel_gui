@@ -28,23 +28,16 @@
   </head>
 
   <body>
-
-  <body>
-
     <nav class="navbar navbar-toggleable-md navbar-inverse bg-inverse fixed-top">
       <a class="navbar-brand" href="#">Sentinel</a>
-
     </nav>
 
     <div class="container-fluid">
-
       <div class="starter-template">
         <h1>Redis Sentinel Installation</h1>
-
-        {% block content %}{% endblock %}
+        {% block index %}{% endblock index %}
       </div>
-
-    </div><!-- /.container -->
+    </div>
 
 
      <!-- Bootstrap core JavaScript
@@ -58,28 +51,12 @@
     <script src="/static/js/ie10-viewport-bug-workaround.js"></script>
     <script>
     function update_manager() {
-        $.post('/update', function(manager) {
-            $.each(manager, function(key, masters){
-                $.each(masters, function(key, master){
-                  // Update master
-                  $('#master_' + master.name).text(master.name + '_dynamic');
-                  // Update master node
-                  console.log($('#masternode_' + master.master_node.id));
-                  $('#masternode_' + master.master_node.id).text(master.master_node.unique_name + '_dynamic');
-                  // Update slaves
-                  $.each(master.slaves, function(key, slave){
-                    console.log(slave);
-                    $('#slave_' + slave.id).text(slave.unique_name + '_dynamic');
-                  });
-                  // Update sentinels
-                  $.each(master.sentinels, function(key, sentinel){
-                    console.log(sentinel)
-                    $('#sentinel_' + sentinel.id).text(sentinel.unique_name + '_dynamic');
-                  });
-                });
+        $.post('/update', function(content) {
+            console.log(content);
+            $('#manager').replaceWith(content);
             });
-        });
-    }
+        };
+    window.onload = update_manager;
     </script>
   </body>
 </html>

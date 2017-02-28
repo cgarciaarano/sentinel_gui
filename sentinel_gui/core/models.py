@@ -8,7 +8,8 @@ Definition of models for core module. It handles Redis nodes.
 """
 import socket
 from redis import StrictRedis
-
+from redis.exceptions import ConnectionError
+import logging
 
 class RedisNode(object):
 
@@ -147,22 +148,37 @@ class SentinelMaster():
     def discover_master_node(self):
         # There's no master node defined yet
         for sentinel in self.sentinels:
-            master_data = sentinel.discover_master(self.name)
-            if 'ip' in master_data and 'port' in master_data:
-                self.set_master_node(RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data))
+            try:
+                master_data = sentinel.discover_master(self.name)
+                if 'ip' in master_data and 'port' in master_data:
+                    self.set_master_node(RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data))
+            except ConnectionError:
+                print("Connection error on {}".format(sentinel))
+                self.remove_sentinel(sentinel)
+                continue
 
     def discover_slaves(self):
         for sentinel in self.sentinels:
-            for slave_data in sentinel.discover_slaves(self.name):
-                if 'ip' in slave_data and 'port' in slave_data:
-                    self.add_slave(RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data))
+            try:
+                for slave_data in sentinel.discover_slaves(self.name):
+                    if 'ip' in slave_data and 'port' in slave_data:
+                        self.add_slave(RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data))
+            except ConnectionError:
+                print("Connection error on {}".format(sentinel))
+                self.remove_sentinel(sentinel)
+                continue
 
     def discover_sentinels(self):
         new_sentinels = []
         for sentinel in self.sentinels:
-            for sentinel_data in sentinel.discover_sentinels(self.name):
-                if 'ip' in sentinel_data and 'port' in sentinel_data:
-                    new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data))
+            try:
+                for sentinel_data in sentinel.discover_sentinels(self.name):
+                    if 'ip' in sentinel_data and 'port' in sentinel_data:
+                        new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data))
+            except ConnectionError:
+                print("Connection error on {}".format(sentinel))
+                self.remove_sentinel(sentinel)
+                continue
 
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
@@ -192,6 +208,13 @@ class SentinelMaster():
             print("New redis sentinel {0}".format(sentinel))
         else:
             print("Redis sentinel {0} already added".format(sentinel))
+
+    def remove_sentinel(self, sentinel):
+        """
+        Remove sentinel host by reference
+        """
+        print("Removing sentinel node {0}".format(sentinel))
+        self.sentinels.remove(sentinel)
 
 
 class SentinelManager():

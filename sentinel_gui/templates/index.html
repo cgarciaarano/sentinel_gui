@@ -1,66 +1,9 @@
 {% extends "base.html" %}
-{% block content %}
+{% block index %}
     <div><a href="javascript:update_manager();">Update</a></div>
     <div><a href="/add_sentinel">Add Sentinel Node...</a></div>
-    <h2>Discovered masters</h2>
-    {% for master in manager['masters'] %}
-        <!-- Master grid-->
-        <div class="row">
-            <div  class="col-md-7">
-                <div class="panel panel-default">
-                    <div class="panel-heading">
-                        <h3 class="panel-title" id="master_{{ master.name }}">{{ master.name }}</h3>
-                    </div>
-                    <!-- Master node -->
-                    <div class="panel-body">
-                        <div class="panel panel-default">
-                            <div class="panel-heading">
-                                <h4 class="panel-title">Master Node</h4>
-                            </div>
-                            <div class="panel-body">
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <span id="masternode_{{ master.master_node.id }}">{{ master.master_node['unique_name'] }}</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
 
-                        <!-- Slaves -->
-                        <div class="panel panel-default">
-                            <div class="panel-heading">
-                                <h4 class="panel-title">Slaves</h4>
-                            </div>
-                            <div class="panel-body">
-                                <div class="row">
-                                    {% for slave in master.slaves %}
-                                    <div class="col-md-6">
-                                        <span id="slave_{{ slave.id }}">{{ slave.unique_name }}</span>
-                                    </div>
-                                   {% endfor %}
-                                </div>
-                            </div>
-                        </div>
+    <span id='manager'></span>
+    {% block masters_data %}{% endblock masters_data%}
 
-                        <!-- Sentinels -->
-                        <div class="panel panel-default">
-                            <div class="panel-heading">
-                                <h4 class="panel-title">Sentinels</h4>
-                            </div>
-                            <div class="panel-body">
-                                <div class="row">
-                                    {% for sentinel in master.sentinels %}
-                                    <div  class="col-md-6">
-                                        <span id="sentinel_{{ sentinel.id }}">{{ sentinel.unique_name }}</span>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    {% endfor %}
-    </span>
-{% endblock %}
+{% endblock index %}
