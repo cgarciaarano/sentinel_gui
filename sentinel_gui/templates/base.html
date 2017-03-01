@@ -53,10 +53,10 @@
     function update_manager() {
         $.post('/update', function(content) {
             console.log(content);
-            $('#manager').replaceWith(content);
+            $('#manager').html(content);
             });
         };
-    window.onload = update_manager;
+    //window.onload = update_manager;
     </script>
   </body>
 </html>

@@ -7,9 +7,11 @@ Definition of models for core module. It handles Redis nodes.
 @author Carlos Garcia <cgarciaarano@gmail.com>
 """
 import socket
+import os
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
 import logging
+from pprint import pformat
 
 logger = logging.getLogger('sentinel_gui')
 
@@ -21,18 +23,11 @@ class RedisNode(object):
     """
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
-        self.conn = StrictRedis(host=host, port=port, **kwargs)
+        self.conn = StrictRedis(host=host, port=port, socket_timeout=0.1, **kwargs)
         self._metadata = metadata
         self.id = metadata['runid'] if 'runid' in metadata else '{host}:{port}'.format(host=host, port=port)
         self.host = socket.gethostbyaddr(host)[0]
         self.unique_name = '{host}:{port}'.format(host=self.host, port=port)
-        self.set_metadata(metadata)
-
-    def set_metadata(self, metadata):
-        """
-        Update internal __dict__
-        """
-        self.__dict__.update(metadata)
 
     def __str__(self):
         """ String representation host:port"""
@@ -57,7 +52,7 @@ class SentinelNode(RedisNode):
     """
 
     def __init__(self, host='localhost', port=26379, metadata={}, **kwargs):
-        super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, socket_timeout=0.1, **kwargs)
+        super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, **kwargs)
 
         self.id = self.conn.info()['run_id']
         # References to the SentinelMasters managed by this node
@@ -189,16 +184,16 @@ class SentinelMaster():
     def set_master_node(self, master_node):
         if not self.master_node or master_node.unique_name != self.master_node.unique_name:
             self.master_node = master_node
-            logger.info("Redis master node is now {0}".format(self.master_node))
+            logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
         else:
-            logger.info("Redis master node {0} already set".format(self.master_node))
+            logger.info("{master}:Redis master node {node} already set".format(master=self, node=self.master_node))
 
     def add_slave(self, slave):
         if slave.unique_name not in [old_slave.unique_name for old_slave in self.slaves]:
             self.slaves.append(slave)
-            logger.info("New redis slave {0}".format(slave))
+            logger.info("{master}:New redis slave {node}".format(master=self, node=slave))
         else:
-            logger.info("Redis slave {0} already added".format(slave))
+            logger.info("{master}:Redis slave {node} already added".format(master=self, node=slave))
 
     def add_sentinel(self, sentinel):
         """
@@ -208,15 +203,15 @@ class SentinelMaster():
             self.sentinels.append(sentinel)
             # Add reference to the master in the sentinel node
             sentinel.link_master(self)
-            logger.info("New redis sentinel {0}".format(sentinel))
+            logger.info("{master}:New redis sentinel {node}".format(master=self, node=sentinel))
         else:
-            logger.info("Redis sentinel {0} already added".format(sentinel))
+            logger.info("{master}:Redis sentinel {node} already added".format(master=self, node=sentinel))
 
     def remove_sentinel(self, sentinel):
         """
         Remove sentinel host by reference
         """
-        logger.info("Removing sentinel node {0}".format(sentinel))
+        logger.info("{master}:Removing sentinel node {node}".format(master=self, node=sentinel))
         self.sentinels.remove(sentinel)
 
 
@@ -271,3 +266,4 @@ class SentinelManager():
         for master in self.masters:
             # Perform discovery on the given master
             master.discover()
+        logger.debug('Current status:{0}{1}'.format(os.linesep, pformat(self.serialize())))
