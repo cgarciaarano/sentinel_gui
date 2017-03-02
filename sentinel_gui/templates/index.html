@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block index %}
-    <div><a href="javascript:update_manager();">Update</a></div>
-    <div><a href="/add_sentinel">Add Sentinel Node...</a></div>
+    <a class="btn btn-primary" href="javascript:update_manager();">Update</a>
+    <a class="btn btn-primary" href="/add_sentinel">Add Sentinel Node...</a>
 
     <span id='manager'></span>
     {% block masters_data %}{% endblock masters_data%}
