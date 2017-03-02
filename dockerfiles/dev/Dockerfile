@@ -11,7 +11,7 @@ FROM python:3.4-alpine
 MAINTAINER cgarciaarano@gmail.com
 
 # Update the repository sources list
-RUN apk update && apk add libffi-dev redis
+RUN apk update && apk add redis
 
 # Add requirements
 COPY requirements/ /opt/app/requirements/
@@ -19,7 +19,7 @@ COPY requirements/ /opt/app/requirements/
 WORKDIR /opt/app
 
 # Install Python packages and system build dependencies
-RUN apk add g++ make && \
+RUN apk add g++ make libffi-dev && \
 	pip install -r requirements/dev.txt && \
-	apk del g++ make && \
+	apk del g++ make libffi-dev && \
 	rm -rf /var/cache/apk/* 
