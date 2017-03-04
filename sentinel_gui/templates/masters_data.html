@@ -7,7 +7,7 @@
     <div  class="col-md-7">
       <div class="panel {% if master.is_healthy() %}panel-default{% endif %}{% if master.is_degraded() %}panel-warning{% endif %}{% if master.is_down() %}panel-danger{% endif %}">
         <div class="panel-heading">
-          <h3 class="panel-title">{{ master.name }}</h3>
+          <h3 class="panel-title">{{ master.unique_name }}</h3>
         </div>
         <!-- Master node -->
         <div class="panel-body">

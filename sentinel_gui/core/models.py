@@ -13,13 +13,14 @@ import logging
 from pprint import pformat
 from functools import reduce
 from enum import IntEnum
+from contextlib import contextmanager
 
 # 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
 
 # local
-from sentinel_gui.core.helpers import redis_warn
+#from sentinel_gui.core.helpers import redis_warn
 
 logger = logging.getLogger('sentinel_gui')
 
@@ -30,7 +31,24 @@ class HealthLevel(IntEnum):
     healthy = 2
 
 
-class HealthNode(object):
+class Node(object):
+    def __repr__(self):
+        """ Object representation"""
+        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
+
+    def __str__(self):
+        """ String representation host:port"""
+        return self.unique_name
+
+    def __eq__(self, other):
+        if isinstance(other, Node):
+            return (self.unique_name == other.unique_name)
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.unique_name)
+
     def get_health(self):
         pass
 
@@ -44,8 +62,34 @@ class HealthNode(object):
         return self.get_health() is HealthLevel.degraded
 
 
-class HealthCluster(set):
+class Cluster(set):
+
+    def __repr__(self):
+        """ Object representation"""
+        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
+
+    def __str__(self):
+        """ String representation"""
+        return self.name
+
+    def __eq__(self, other):
+        """Object comparision"""
+        if isinstance(other, Cluster):
+            return (self.name == other.name)
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.name)
+
     def get_health(self):
+        """
+        Return HealthLevel of its members.
+
+         - down: All members are down
+         - healthy: All members are healthy
+         - degraded: Any other case
+        """
         if self:
             aggr = (reduce(lambda x, y: x + y, map(lambda x: x.get_health(), self))/(len(self)))
 
@@ -67,7 +111,7 @@ class HealthCluster(set):
         return self.get_health() is HealthLevel.degraded
 
 
-class RedisNode(HealthNode):
+class Redis(Node):
 
     """
     Represents a redis instance, it's a Redis connection and metadata. Base class.
@@ -76,45 +120,39 @@ class RedisNode(HealthNode):
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
         # Stored for reconnect
-        self.host = socket.gethostbyname(host)
+        try:
+            self.host = socket.gethostbyname(host)
+        except:
+            logger.warn("Can't resolve hostname {}. Let Redis fail.".format(host))
+            self.host = host
         self.port = port
         self.kwargs = kwargs
 
-        self.hostname = socket.gethostbyaddr(self.host)[0]
-
+        try:
+            self.hostname = socket.gethostbyaddr(self.host)[0]
+        except:
+            logger.warn("Can't resolve IP address {}. Fallback to IP.".format(self.host))
+            self.hostname = host
+        self.active = True
         # Stored for debug
         self._metadata = metadata
 
         self.unique_name = '{host}:{port}'.format(host=self.host, port=self.port)
 
-        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=RedisNode.TIMEOUT, **self.kwargs)
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, **self.kwargs)
 
-    def __repr__(self):
-        """ Object representation"""
-        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
-
-    def __str__(self):
-        """ String representation host:port"""
-        return self.unique_name
-
-    def __eq__(self, other):
-        if isinstance(other, RedisNode):
-            return (self.unique_name == other.unique_name)
-        else:
-            return False
-
-    def __hash__(self):
-        return hash(self.unique_name)
+        # Test connection
+        self.ping()
 
     def ping(self):
-        with redis_warn(self):
+        with self.redis_warn():
             self.conn.ping()
             return True
         return False
 
     def is_active(self):
         # TODO Cache it somehow
-        return self.ping()
+        return self.active
 
     def get_health(self):
         if self.is_active():
@@ -124,7 +162,7 @@ class RedisNode(HealthNode):
 
     def reconnect(self):
         """Connect to Redis"""
-        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=RedisNode.TIMEOUT, **self.kwargs)
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, **self.kwargs)
 
         if self.ping():
             logger.info('Connected to Redis {0}'.format(self))
@@ -143,8 +181,16 @@ class RedisNode(HealthNode):
                 'metadata': self._metadata
                 }
 
+    @contextmanager
+    def redis_warn(self):
+        try:
+            yield
+        except ConnectionError:
+            logger.warn("Can't connect to redis instance {}".format(self))
+            self.active = False
 
-class SentinelNode(RedisNode):
+
+class SentinelNode(Redis):
 
     """
     Represents a redis sentinel instance, it's a Redis connection, metadata and a list of
@@ -154,7 +200,7 @@ class SentinelNode(RedisNode):
     def __init__(self, host='localhost', port=26379, metadata={}, **kwargs):
         super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, **kwargs)
 
-        self.masters = HealthCluster()
+        self.masters = Cluster()
 
     def serialize(self):
         """
@@ -172,28 +218,28 @@ class SentinelNode(RedisNode):
         Returns a dict of masters {'master1':  data, 'master2': data}.
         Docs are wrong: https://redis-py.readthedocs.io/en/latest/#redis.StrictRedis.sentinel_masters
         """
-        with redis_warn(self):
+        with self.redis_warn():
             return self.conn.sentinel_masters()
 
     def discover_master(self, master_name):
         """
         Returns a dict {'master': data}
         """
-        with redis_warn(self):
+        with self.redis_warn():
             return self.conn.sentinel_master(master_name)
 
     def discover_slaves(self, master_name):
         """
         Returns a list of slaves [{'slave1': data}, {'slave2': data}]
         """
-        with redis_warn(self):
+        with self.redis_warn():
             return self.conn.sentinel_slaves(master_name)
 
     def discover_sentinels(self, master_name):
         """
         Returns a list of sentinels, except self [{'sentinel1': data}, {'sentinel2': data}]
         """
-        with redis_warn(self):
+        with self.redis_warn():
             return self.conn.sentinel_sentinels(master_name)
 
     def link_master(self, master):
@@ -203,38 +249,21 @@ class SentinelNode(RedisNode):
         self.masters.add(master)
 
 
-class SentinelMaster(HealthNode):
+class SentinelMaster(Node):
 
     """
-    A Sentinel master is comprised of a master node RedisNode, optionally slaves RedisNode, and a group of SentinelNodes, and metadata
+    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, and a group of SentinelNodes, and metadata
     """
 
     def __init__(self, name):
         """
         Creates a SentinelMaster instance. Just needs a name, but for discovery at least a SentinelNode is needed
         """
+        self.unique_name = name
         self.name = name
         self.master_node = None
-        self.slaves = HealthCluster()
-        self.sentinels = HealthCluster()
-
-    def __repr__(self):
-        """ Object representation"""
-        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
-
-    def __str__(self):
-        """ String representation"""
-        return self.name
-
-    def __eq__(self, other):
-        """Object comparision"""
-        if isinstance(other, SentinelMaster):
-            return (self.name == other.name)
-        else:
-            return False
-
-    def __hash__(self):
-        return hash(self.name)
+        self.slaves = Cluster()
+        self.sentinels = Cluster()
 
     def serialize(self):
         json_info = {
@@ -282,22 +311,33 @@ class SentinelMaster(HealthNode):
         # There's no master node defined yet
         for sentinel in self.get_active_sentinels():
             master_data = sentinel.discover_master(self.name)
-            self.master_node = RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data)
-            logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
+            # master_data could be None if the current sentinel is disconnected
+            if master_data:
+                new_master = Redis(host=master_data['ip'], port=master_data['port'], metadata=master_data)
+                logger.debug("{master}:New master {n}".format(master=self, n=new_master))
+                self.master_node = new_master
+                logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
 
     def discover_slaves(self):
-        new_slaves = HealthCluster()
+        new_slaves = Cluster()
         for sentinel in self.get_active_sentinels():
             for slave_data in sentinel.discover_slaves(self.name):
-                new_slave = RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data)
+                new_slave = Redis(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data)
                 new_slaves.add(new_slave)
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_slave))
 
         self.slaves = new_slaves
 
     def discover_sentinels(self):
-        new_sentinels = HealthCluster()
-        for sentinel in self.get_active_sentinels():
+        new_sentinels = Cluster()
+
+        # If all sentinels are down, this will retry reconnection
+        current_sentinels = self.get_active_sentinels()
+        if not current_sentinels:
+            logger.debug("{master}:All sentinels down, retrying connections".format(master=self))
+            current_sentinels = self.sentinels
+
+        for sentinel in current_sentinels:
             for sentinel_data in sentinel.discover_sentinels(self.name):
                 new_sentinel = SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data)
                 new_sentinels.add(new_sentinel)
@@ -330,7 +370,7 @@ class SentinelManager(object):
     """
 
     def __init__(self):
-        self.masters = HealthCluster()
+        self.masters = Cluster()
 
     def serialize(self):
         json_info = {'masters': []}
