@@ -10,7 +10,6 @@ Definition of models for core module. It handles Redis nodes.
 import socket
 import os
 import logging
-import math
 from pprint import pformat
 from functools import reduce
 from enum import IntEnum
@@ -28,24 +27,47 @@ logger = logging.getLogger('sentinel_gui')
 class HealthLevel(IntEnum):
     down = 0
     degraded = 1
-    active = 2
+    healthy = 2
 
 
-class HealthMonitor(object):
+class HealthNode(object):
     def get_health(self):
         pass
 
     def is_healthy(self):
-        return self.get_health() is HealthLevel.active
-
-    def is_degraded(self):
-        return self.get_health() is HealthLevel.degraded
+        return self.get_health() is HealthLevel.healthy
 
     def is_down(self):
         return self.get_health() is HealthLevel.down
 
+    def is_degraded(self):
+        return self.get_health() is HealthLevel.degraded
 
-class RedisNode(HealthMonitor):
+
+class HealthCluster(set):
+    def get_health(self):
+        if self:
+            aggr = (reduce(lambda x, y: x + y, map(lambda x: x.get_health(), self))/(len(self)))
+
+            if aggr == HealthLevel.down:
+                return HealthLevel.down
+            elif aggr == HealthLevel.healthy:
+                return HealthLevel.healthy
+            else:
+                return HealthLevel.degraded
+        return HealthLevel.down
+
+    def is_healthy(self):
+        return self.get_health() is HealthLevel.healthy
+
+    def is_down(self):
+        return self.get_health() is HealthLevel.down
+
+    def is_degraded(self):
+        return self.get_health() is HealthLevel.degraded
+
+
+class RedisNode(HealthNode):
 
     """
     Represents a redis instance, it's a Redis connection and metadata. Base class.
@@ -54,14 +76,16 @@ class RedisNode(HealthMonitor):
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
         # Stored for reconnect
-        self.host = host
+        self.host = socket.gethostbyname(host)
         self.port = port
         self.kwargs = kwargs
+
+        self.hostname = socket.gethostbyaddr(self.host)[0]
 
         # Stored for debug
         self._metadata = metadata
 
-        self.unique_name = '{host}:{port}'.format(host=socket.gethostbyaddr(self.host)[0], port=self.port)
+        self.unique_name = '{host}:{port}'.format(host=self.host, port=self.port)
 
         self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=RedisNode.TIMEOUT, **self.kwargs)
 
@@ -89,11 +113,12 @@ class RedisNode(HealthMonitor):
         return False
 
     def is_active(self):
+        # TODO Cache it somehow
         return self.ping()
 
     def get_health(self):
         if self.is_active():
-            return HealthLevel.active
+            return HealthLevel.healthy
         else:
             return HealthLevel.down
 
@@ -129,7 +154,7 @@ class SentinelNode(RedisNode):
     def __init__(self, host='localhost', port=26379, metadata={}, **kwargs):
         super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, **kwargs)
 
-        self.masters = set()
+        self.masters = HealthCluster()
 
     def serialize(self):
         """
@@ -178,7 +203,7 @@ class SentinelNode(RedisNode):
         self.masters.add(master)
 
 
-class SentinelMaster(HealthMonitor):
+class SentinelMaster(HealthNode):
 
     """
     A Sentinel master is comprised of a master node RedisNode, optionally slaves RedisNode, and a group of SentinelNodes, and metadata
@@ -190,8 +215,8 @@ class SentinelMaster(HealthMonitor):
         """
         self.name = name
         self.master_node = None
-        self.slaves = set()
-        self.sentinels = set()
+        self.slaves = HealthCluster()
+        self.sentinels = HealthCluster()
 
     def __repr__(self):
         """ Object representation"""
@@ -218,8 +243,8 @@ class SentinelMaster(HealthMonitor):
             'slaves': [],
             'sentinels': [],
             'health': self.get_health(),
-            'health_sentinels': self.get_health_sentinels(),
-            'health_slaves': self.get_health_slaves(),
+            'health_sentinels': self.sentinels.get_health(),
+            'health_slaves': self.slaves.get_health(),
         }
 
         json_info['slaves'] = [slave.serialize() for slave in self.slaves]
@@ -229,62 +254,18 @@ class SentinelMaster(HealthMonitor):
 
     def get_health(self):
         """
-        Return the HealthLevel of the master
+        Return HealthLevel of this master.
 
-         - down: if the master node or sentinels are down
-         - degraded: if sentinels are degraded or slaves are degraded/down
-         - active: if everything is active
+            - down: If master is down or sentinels are down
+            - active: If everything is active
+            - degraded: Any other case
         """
-        h_master = self.get_health_masternode()
-        h_sentinel = self.get_health_sentinels()
-        h_slaves = self.get_health_slaves()
-        logger.debug('Health value: {}'.format(int((h_master + h_sentinel + h_slaves)/3)))
-        logger.debug('Return: {}'.format(int((h_master + h_sentinel + h_slaves)/3) is HealthLevel.active))
-
-        if h_master is HealthLevel.down or h_sentinel is HealthLevel.down:
+        if self.master_node.is_down() or self.sentinels.is_down():
             return HealthLevel.down
-        elif HealthLevel(int((h_master + h_sentinel + h_slaves)/3)) is HealthLevel.active:
-            return HealthLevel.active
+        elif self.master_node.is_healthy() and self.sentinels.is_healthy() and self.slaves.is_healthy():
+            return HealthLevel.healthy
         else:
             return HealthLevel.degraded
-
-    def get_health_masternode(self):
-        return self.master_node.get_health()
-
-    def get_health_slaves(self):
-        """
-        Return the HealthLevel of the slaves
-            - down, if all slaves are down
-            - degraded, if any slave is down
-            - active, if all slaves are active
-        """
-        return HealthLevel(int(reduce(lambda x, y: x+y, map(lambda x: x.get_health(), self.slaves)) / len(self.slaves)))
-
-    def get_health_sentinels(self):
-        """Return the HealthLevel of the sentinels
-            - down, if all sentinels are down
-            - degraded, if any sentinels is down
-            - active, if all sentinels are active
-        """
-        return HealthLevel(int(reduce(lambda x, y: x+y, map(lambda x: x.get_health(), self.sentinels)) / len(self.sentinels)))
-
-    def are_sentinels_healthy(self):
-        return self.get_health_sentinels() is HealthLevel.active
-
-    def are_sentinels_degraded(self):
-        return self.get_health_sentinels() is HealthLevel.degraded
-
-    def are_sentinels_down(self):
-        return self.get_health_sentinels() is HealthLevel.down
-
-    def are_slaves_healthy(self):
-        return self.get_health_slaves() is HealthLevel.active
-
-    def are_slaves_degraded(self):
-        return self.get_health_slaves() is HealthLevel.degraded
-
-    def are_slaves_down(self):
-        return self.get_health_slaves() is HealthLevel.down
 
     def discover(self):
         """
@@ -305,7 +286,7 @@ class SentinelMaster(HealthMonitor):
             logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
 
     def discover_slaves(self):
-        new_slaves = set()
+        new_slaves = HealthCluster()
         for sentinel in self.get_active_sentinels():
             for slave_data in sentinel.discover_slaves(self.name):
                 new_slave = RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data)
@@ -315,7 +296,7 @@ class SentinelMaster(HealthMonitor):
         self.slaves = new_slaves
 
     def discover_sentinels(self):
-        new_sentinels = set()
+        new_sentinels = HealthCluster()
         for sentinel in self.get_active_sentinels():
             for sentinel_data in sentinel.discover_sentinels(self.name):
                 new_sentinel = SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data)
@@ -323,7 +304,7 @@ class SentinelMaster(HealthMonitor):
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_sentinel))
 
         # We can't add new sentinels while looping self.sentinels
-        self.sentinels.union(new_sentinels)
+        [self.add_sentinel(sentinel) for sentinel in new_sentinels]
 
     def add_sentinel(self, sentinel):
         """
@@ -349,7 +330,7 @@ class SentinelManager(object):
     """
 
     def __init__(self):
-        self.masters = set()
+        self.masters = HealthCluster()
 
     def serialize(self):
         json_info = {'masters': []}
