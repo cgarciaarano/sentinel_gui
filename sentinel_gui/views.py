@@ -1,6 +1,11 @@
 
+# std lib
+
+# 3rd parties
 from flask import render_template
 #from flask import jsonify
+
+# local
 from sentinel_gui.web import app, sentinel_manager
 
 

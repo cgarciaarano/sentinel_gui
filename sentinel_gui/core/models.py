@@ -6,32 +6,106 @@ Definition of models for core module. It handles Redis nodes.
 
 @author Carlos Garcia <cgarciaarano@gmail.com>
 """
+# std lib
 import socket
 import os
+import logging
+import math
+from pprint import pformat
+from functools import reduce
+from enum import IntEnum
+
+# 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
-import logging
-from pprint import pformat
+
+# local
+from sentinel_gui.core.helpers import redis_warn
 
 logger = logging.getLogger('sentinel_gui')
 
 
-class RedisNode(object):
+class HealthLevel(IntEnum):
+    down = 0
+    degraded = 1
+    active = 2
+
+
+class HealthMonitor(object):
+    def get_health(self):
+        pass
+
+    def is_healthy(self):
+        return self.get_health() is HealthLevel.active
+
+    def is_degraded(self):
+        return self.get_health() is HealthLevel.degraded
+
+    def is_down(self):
+        return self.get_health() is HealthLevel.down
+
+
+class RedisNode(HealthMonitor):
 
     """
     Represents a redis instance, it's a Redis connection and metadata. Base class.
     """
+    TIMEOUT = 0.1
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
-        self.conn = StrictRedis(host=host, port=port, socket_timeout=0.1, **kwargs)
+        # Stored for reconnect
+        self.host = host
+        self.port = port
+        self.kwargs = kwargs
+
+        # Stored for debug
         self._metadata = metadata
-        self.id = metadata['runid'] if 'runid' in metadata else '{host}:{port}'.format(host=host, port=port)
-        self.host = socket.gethostbyaddr(host)[0]
-        self.unique_name = '{host}:{port}'.format(host=self.host, port=port)
+
+        self.unique_name = '{host}:{port}'.format(host=socket.gethostbyaddr(self.host)[0], port=self.port)
+
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=RedisNode.TIMEOUT, **self.kwargs)
+
+    def __repr__(self):
+        """ Object representation"""
+        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
 
     def __str__(self):
         """ String representation host:port"""
         return self.unique_name
+
+    def __eq__(self, other):
+        if isinstance(other, RedisNode):
+            return (self.unique_name == other.unique_name)
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.unique_name)
+
+    def ping(self):
+        with redis_warn(self):
+            self.conn.ping()
+            return True
+        return False
+
+    def is_active(self):
+        return self.ping()
+
+    def get_health(self):
+        if self.is_active():
+            return HealthLevel.active
+        else:
+            return HealthLevel.down
+
+    def reconnect(self):
+        """Connect to Redis"""
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=RedisNode.TIMEOUT, **self.kwargs)
+
+        if self.ping():
+            logger.info('Connected to Redis {0}'.format(self))
+        else:
+            logger.error('Failed connection to Redis {0}'.format(self))
+            raise ConnectionError
 
     def serialize(self):
         """
@@ -39,7 +113,8 @@ class RedisNode(object):
         E.g. {'unique_name': NAME,... (metadata)}
         """
         return {'unique_name': self.unique_name,
-                'id': self.id,
+                'active': self.is_active(),
+                'health': self.get_health(),
                 'metadata': self._metadata
                 }
 
@@ -54,9 +129,7 @@ class SentinelNode(RedisNode):
     def __init__(self, host='localhost', port=26379, metadata={}, **kwargs):
         super(SentinelNode, self).__init__(host=host, port=port, metadata=metadata, **kwargs)
 
-        self.id = self.conn.info()['run_id']
-        # References to the SentinelMasters managed by this node
-        self.masters = []
+        self.masters = set()
 
     def serialize(self):
         """
@@ -74,35 +147,38 @@ class SentinelNode(RedisNode):
         Returns a dict of masters {'master1':  data, 'master2': data}.
         Docs are wrong: https://redis-py.readthedocs.io/en/latest/#redis.StrictRedis.sentinel_masters
         """
-        return self.conn.sentinel_masters()
+        with redis_warn(self):
+            return self.conn.sentinel_masters()
 
     def discover_master(self, master_name):
         """
         Returns a dict {'master': data}
         """
-        return self.conn.sentinel_master(master_name)
+        with redis_warn(self):
+            return self.conn.sentinel_master(master_name)
 
     def discover_slaves(self, master_name):
         """
         Returns a list of slaves [{'slave1': data}, {'slave2': data}]
         """
-        return self.conn.sentinel_slaves(master_name)
+        with redis_warn(self):
+            return self.conn.sentinel_slaves(master_name)
 
     def discover_sentinels(self, master_name):
         """
         Returns a list of sentinels, except self [{'sentinel1': data}, {'sentinel2': data}]
         """
-        return self.conn.sentinel_sentinels(master_name)
+        with redis_warn(self):
+            return self.conn.sentinel_sentinels(master_name)
 
     def link_master(self, master):
         """
         Add a reference to the given master
         """
-        if master not in self.masters:
-            self.masters.append(master)
+        self.masters.add(master)
 
 
-class SentinelMaster():
+class SentinelMaster(HealthMonitor):
 
     """
     A Sentinel master is comprised of a master node RedisNode, optionally slaves RedisNode, and a group of SentinelNodes, and metadata
@@ -114,15 +190,36 @@ class SentinelMaster():
         """
         self.name = name
         self.master_node = None
-        self.slaves = []
-        self.sentinels = []
+        self.slaves = set()
+        self.sentinels = set()
+
+    def __repr__(self):
+        """ Object representation"""
+        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
+
+    def __str__(self):
+        """ String representation"""
+        return self.name
+
+    def __eq__(self, other):
+        """Object comparision"""
+        if isinstance(other, SentinelMaster):
+            return (self.name == other.name)
+        else:
+            return False
+
+    def __hash__(self):
+        return hash(self.name)
 
     def serialize(self):
         json_info = {
             'name': self.name,
             'master_node': self.master_node.serialize(),
             'slaves': [],
-            'sentinels': []
+            'sentinels': [],
+            'health': self.get_health(),
+            'health_sentinels': self.get_health_sentinels(),
+            'health_slaves': self.get_health_slaves(),
         }
 
         json_info['slaves'] = [slave.serialize() for slave in self.slaves]
@@ -130,82 +227,112 @@ class SentinelMaster():
 
         return json_info
 
+    def get_health(self):
+        """
+        Return the HealthLevel of the master
+
+         - down: if the master node or sentinels are down
+         - degraded: if sentinels are degraded or slaves are degraded/down
+         - active: if everything is active
+        """
+        h_master = self.get_health_masternode()
+        h_sentinel = self.get_health_sentinels()
+        h_slaves = self.get_health_slaves()
+        logger.debug('Health value: {}'.format(int((h_master + h_sentinel + h_slaves)/3)))
+        logger.debug('Return: {}'.format(int((h_master + h_sentinel + h_slaves)/3) is HealthLevel.active))
+
+        if h_master is HealthLevel.down or h_sentinel is HealthLevel.down:
+            return HealthLevel.down
+        elif HealthLevel(int((h_master + h_sentinel + h_slaves)/3)) is HealthLevel.active:
+            return HealthLevel.active
+        else:
+            return HealthLevel.degraded
+
+    def get_health_masternode(self):
+        return self.master_node.get_health()
+
+    def get_health_slaves(self):
+        """
+        Return the HealthLevel of the slaves
+            - down, if all slaves are down
+            - degraded, if any slave is down
+            - active, if all slaves are active
+        """
+        return HealthLevel(int(reduce(lambda x, y: x+y, map(lambda x: x.get_health(), self.slaves)) / len(self.slaves)))
+
+    def get_health_sentinels(self):
+        """Return the HealthLevel of the sentinels
+            - down, if all sentinels are down
+            - degraded, if any sentinels is down
+            - active, if all sentinels are active
+        """
+        return HealthLevel(int(reduce(lambda x, y: x+y, map(lambda x: x.get_health(), self.sentinels)) / len(self.sentinels)))
+
+    def are_sentinels_healthy(self):
+        return self.get_health_sentinels() is HealthLevel.active
+
+    def are_sentinels_degraded(self):
+        return self.get_health_sentinels() is HealthLevel.degraded
+
+    def are_sentinels_down(self):
+        return self.get_health_sentinels() is HealthLevel.down
+
+    def are_slaves_healthy(self):
+        return self.get_health_slaves() is HealthLevel.active
+
+    def are_slaves_degraded(self):
+        return self.get_health_slaves() is HealthLevel.degraded
+
+    def are_slaves_down(self):
+        return self.get_health_slaves() is HealthLevel.down
+
     def discover(self):
         """
         Update internal __dict__
         """
-        self.master_node = None
-        self.slaves = []
         self.discover_master_node()
         self.discover_slaves()
         self.discover_sentinels()
 
-    def __str__(self):
-        return self.name
+    def get_active_sentinels(self):
+        return (sentinel for sentinel in self.sentinels if sentinel.is_active())
 
     def discover_master_node(self):
         # There's no master node defined yet
-        for sentinel in self.sentinels:
-            try:
-                master_data = sentinel.discover_master(self.name)
-                if 'ip' in master_data and 'port' in master_data:
-                    self.set_master_node(RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data))
-            except ConnectionError:
-                logger.error("Connection error on {}".format(sentinel))
-                self.remove_sentinel(sentinel)
-                continue
+        for sentinel in self.get_active_sentinels():
+            master_data = sentinel.discover_master(self.name)
+            self.master_node = RedisNode(host=master_data['ip'], port=master_data['port'], metadata=master_data)
+            logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
 
     def discover_slaves(self):
-        for sentinel in self.sentinels:
-            try:
-                for slave_data in sentinel.discover_slaves(self.name):
-                    if 'ip' in slave_data and 'port' in slave_data:
-                        self.add_slave(RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data))
-            except ConnectionError:
-                logger.error("Connection error on {}".format(sentinel))
-                self.remove_sentinel(sentinel)
-                continue
+        new_slaves = set()
+        for sentinel in self.get_active_sentinels():
+            for slave_data in sentinel.discover_slaves(self.name):
+                new_slave = RedisNode(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data)
+                new_slaves.add(new_slave)
+                logger.info("{master}:New redis slave {node}".format(master=self, node=new_slave))
+
+        self.slaves = new_slaves
 
     def discover_sentinels(self):
-        new_sentinels = []
-        for sentinel in self.sentinels:
-            try:
-                for sentinel_data in sentinel.discover_sentinels(self.name):
-                    if 'ip' in sentinel_data and 'port' in sentinel_data:
-                        new_sentinels.append(SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data))
-            except ConnectionError:
-                logger.error("Connection error on {}".format(sentinel))
-                self.remove_sentinel(sentinel)
-                continue
+        new_sentinels = set()
+        for sentinel in self.get_active_sentinels():
+            for sentinel_data in sentinel.discover_sentinels(self.name):
+                new_sentinel = SentinelNode(host=sentinel_data['ip'], port=sentinel_data['port'], metadata=sentinel_data)
+                new_sentinels.add(new_sentinel)
+                logger.info("{master}:New redis slave {node}".format(master=self, node=new_sentinel))
 
         # We can't add new sentinels while looping self.sentinels
-        [self.add_sentinel(sentinel) for sentinel in new_sentinels]
-
-    def set_master_node(self, master_node):
-        if not self.master_node or master_node.unique_name != self.master_node.unique_name:
-            self.master_node = master_node
-            logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
-        else:
-            logger.info("{master}:Redis master node {node} already set".format(master=self, node=self.master_node))
-
-    def add_slave(self, slave):
-        if slave.unique_name not in [old_slave.unique_name for old_slave in self.slaves]:
-            self.slaves.append(slave)
-            logger.info("{master}:New redis slave {node}".format(master=self, node=slave))
-        else:
-            logger.info("{master}:Redis slave {node} already added".format(master=self, node=slave))
+        self.sentinels.union(new_sentinels)
 
     def add_sentinel(self, sentinel):
         """
         Add SentinelNode which are monitoring this master
         """
-        if sentinel.unique_name not in [old_sentinel.unique_name for old_sentinel in self.sentinels]:
-            self.sentinels.append(sentinel)
-            # Add reference to the master in the sentinel node
-            sentinel.link_master(self)
-            logger.info("{master}:New redis sentinel {node}".format(master=self, node=sentinel))
-        else:
-            logger.info("{master}:Redis sentinel {node} already added".format(master=self, node=sentinel))
+        self.sentinels.add(sentinel)
+        logger.info("{master}:New redis sentinel {node}".format(master=self, node=sentinel))
+        # Add reference to the master in the sentinel node
+        sentinel.link_master(self)
 
     def remove_sentinel(self, sentinel):
         """
@@ -215,14 +342,14 @@ class SentinelMaster():
         self.sentinels.remove(sentinel)
 
 
-class SentinelManager():
+class SentinelManager(object):
 
     """
-    Manages current Sentinel configuration
+    Manages current Sentinel cluster configuration
     """
 
     def __init__(self):
-        self.masters = []
+        self.masters = set()
 
     def serialize(self):
         json_info = {'masters': []}
@@ -240,22 +367,17 @@ class SentinelManager():
         sentinel = SentinelNode(host=host, port=port)
 
         # Discover masters in the given sentinel.
-        for master_name, master_data in sentinel.discover_masters().items():
-            # If not discovered yet, add it
-            if not master_name in [old_master.name for old_master in self.masters]:
-                new_master = SentinelMaster(master_name)
-                self.masters.append(new_master)
+        for master_name, _ in sentinel.discover_masters().items():
+            new_master = SentinelMaster(master_name)
+            self.masters.add(new_master)
 
-                # Link sentinel to current master
-                new_master.add_sentinel(sentinel)
+            # Link sentinel to current master
+            new_master.add_sentinel(sentinel)
 
-                # Perform discovery on the given master
-                new_master.discover()
+            # Perform discovery on the given master
+            new_master.discover()
 
     def get_masters(self):
-        """
-        Return the current masters configuration. Should be smarter.
-        """
         self.update()
         return self.masters
 
@@ -266,4 +388,5 @@ class SentinelManager():
         for master in self.masters:
             # Perform discovery on the given master
             master.discover()
+
         logger.debug('Current status:{0}{1}'.format(os.linesep, pformat(self.serialize())))

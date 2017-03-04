@@ -1,8 +1,13 @@
 # -*- coding: utf-8 -*-
-from flask import Flask
-from sentinel_gui.core import models
+# std lib
 import os
 import logging
+
+# 3rd parties
+from flask import Flask
+
+# local
+from sentinel_gui.core import models
 
 
 def setup_logging(app):
