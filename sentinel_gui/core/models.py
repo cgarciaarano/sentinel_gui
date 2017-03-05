@@ -116,7 +116,7 @@ class Redis(Node):
     """
     Represents a redis instance, it's a Redis connection and metadata. Base class.
     """
-    TIMEOUT = 0.1
+    TIMEOUT = 0.5
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
         # Stored for reconnect
@@ -371,6 +371,9 @@ class SentinelManager(object):
 
     def __init__(self):
         self.masters = Cluster()
+
+    def reset(self):
+        self.__init__()
 
     def serialize(self):
         json_info = {'masters': []}

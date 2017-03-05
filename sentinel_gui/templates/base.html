@@ -21,31 +21,32 @@
       <script src="https://oss.maxcdn.com/respond/1.4.2/respond.min.js"></script>
     <![endif]-->
     {% if title %}
-    <title>{{ title }} - Sentinel GUI</title>
+    <title>{{ title }} - Sentinel UI</title>
     {% else %}
-    <title>Welcome to Sentinel GUI</title>
+    <title>Welcome to Sentinel UI</title>
     {% endif %}
   </head>
 
   <body>
     <nav class="navbar navbar-toggleable-md navbar-inverse bg-inverse fixed-top">
-      <a class="navbar-brand" href="#">Sentinel</a>
+      <a class="navbar-brand" href="#">Sentinel UI</a>
     </nav>
 
     <!-- Flashing messages -->
     {% with messages = get_flashed_messages() %}
       {% if messages %}
-        <ul>
         {% for message in messages %}
-            <li>{{ message }} </li>
+            <div class="alert alert-info alert-dismissible" role="alert">
+                <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                {{ message }}
+            </div>
         {% endfor %}
-        </ul>
+
       {% endif %}
     {% endwith %}
 
     <div class="container-fluid">
       <div class="starter-template">
-        <h1>Redis Sentinel pools</h1>
         {% block index %}{% endblock index %}
       </div>
     </div>

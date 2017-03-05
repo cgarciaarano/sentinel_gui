@@ -3,7 +3,7 @@
 import logging
 
 # 3rd parties
-from flask import render_template, flash
+from flask import render_template, flash, redirect, url_for
 from flask_wtf import FlaskForm
 from wtforms import StringField, IntegerField
 from wtforms.validators import DataRequired
@@ -28,8 +28,13 @@ def index():
 
     form = AddNodeForm()
     if form.validate_on_submit():
-        flash('Adding sentinel {} from user request'.format(form.host.data))
-        sentinel_manager.add_sentinel_node(host=form.host.data, port=form.port.data)
+        try:
+            sentinel_manager.add_sentinel_node(host=form.host.data, port=form.port.data)
+            flash('Adding sentinel {0}:{1} from user request'.format(form.host.data, form.port.data))
+        except:
+            flash('Adding sentinel {0}:{1} failed'.format(form.host.data, form.port.data))
+            raise
+
     return render_template('index.html', form=form, title='Home')
 
 
@@ -38,3 +43,10 @@ def update():
     sentinel_manager.update()
 
     return render_template('masters_data.html', title='Home', manager=sentinel_manager)
+
+
+@app.route('/reset')
+def reset():
+    sentinel_manager.reset()
+
+    return redirect(url_for('index'))
