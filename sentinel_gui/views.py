@@ -33,7 +33,6 @@ def index():
             flash('Adding sentinel {0}:{1} from user request'.format(form.host.data, form.port.data))
         except:
             flash('Adding sentinel {0}:{1} failed'.format(form.host.data, form.port.data))
-            raise
 
     return render_template('index.html', form=form, title='Home')
 
