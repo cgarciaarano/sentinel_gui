@@ -1,8 +1,25 @@
 {% extends "base.html" %}
 {% block index %}
     <a class="btn btn-primary" href="javascript:update_manager();">Update</a>
-    <a class="btn btn-primary" href="/add_sentinel">Add Sentinel Node...</a>
+    <!-- Button trigger modal -->
+    <button class="btn btn-primary" data-toggle="modal" data-target="#addNodeModal" data-keyboard="true" data-focus="true">Add Sentinel Node</button>
 
+    <!-- Modal -->
+    <div class="modal" id="addNodeModal" tabindex="-1" role="dialog" aria-labelledby="addSentinelNodeLabel" aria-hidden="true">
+      <div class="modal-dialog" role="document">
+        <div class="modal-content">
+          <div class="modal-body">
+            <!-- Sentinel form -->
+            <form class="form-inline" method="post" action="#">
+              {{ form.hidden_tag() }}
+              <label class="sr-only" for="inlineFormInput">Node</label>
+              {{ form.host }}:{{ form.port }}
+              <button type="submit" class="btn btn-primary">Add</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
     <span id='manager'></span>
     {% block masters_data %}{% endblock masters_data%}
 
