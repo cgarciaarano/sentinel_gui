@@ -30,6 +30,15 @@ class HealthLevel(IntEnum):
     degraded = 1
     healthy = 2
 
+    def __str__(self):
+        """ String representation host:port"""
+        if self is HealthLevel.down:
+            return 'Down'
+        elif self is HealthLevel.degraded:
+            return 'Degraded'
+        elif self is HealthLevel.healthy:
+            return 'Ok'
+
 
 class Node(object):
     def __repr__(self):

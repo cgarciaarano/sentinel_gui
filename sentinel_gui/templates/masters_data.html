@@ -1,63 +1,57 @@
 {% block masters_data %}
 <!-- Masters information-->
 <h2>Discovered masters</h2>
-{% for master in manager.masters %}
   <!-- Master grid-->
   <div class="row">
-    <div  class="col-md-7">
-      <div class="panel {% if master.is_healthy() %}panel-default{% endif %}{% if master.is_degraded() %}panel-warning{% endif %}{% if master.is_down() %}panel-danger{% endif %}">
+  {% for master in manager.masters %}
+
+    <div  class="col-md-3">
+      <div class="panel panel-default">
         <div class="panel-heading">
-          <h3 class="panel-title">{{ master.unique_name }}</h3>
+          <div class="panel-title"><strong>{{ master.unique_name }}</strong>
+          <span class="label {% if master.is_healthy() %}label-success{% endif %}{% if master.is_degraded() %}label-warning{% endif %}{% if master.is_down() %}label-danger{% endif %}">{{ master.get_health() }}</span>
+          </div>
         </div>
         <!-- Master node -->
         <div class="panel-body">
-          <div class="panel {% if master.master_node.is_healthy() %}panel-default{% endif %}{% if master.master_node.is_down() %}panel-danger{% endif %}">
-            <div class="panel-heading">
-              <h4 class="panel-title">Master Node</h4>
+          <div class="list-group">
+            <div class="list-group-item {% if master.master_node.is_healthy() %}list-group-item-success{% endif %}{% if master.master_node.is_down() %}list-group-item-danger{% endif %}">
+                <strong>Master Node</strong>
             </div>
-            <div class="panel-body">
-              <div class="row">
-                <div class="col-md-6">
-                  <p {% if master.master_node.is_down() %}class="text-danger"{% endif %}>{{ master.master_node.hostname }} ({{ master.master_node.unique_name }})</p>
-                </div>
-              </div>
+            <div class="list-group-item">
+                <p {% if master.master_node.is_down() %}class="text-danger"{% endif %}>{{ master.master_node.hostname }} ({{ master.master_node.unique_name }})</p>
             </div>
           </div>
 
           <!-- Slaves -->
-          <div class="panel {% if master.slaves.is_healthy() %}panel-default{% endif %}{% if master.slaves.is_degraded() %}panel-warning{% endif %}{% if master.slaves.is_down() %}panel-danger{% endif %}">
-            <div class="panel-heading">
-              <h4 class="panel-title">Slaves</h4>
+          <div class="list-group">
+            <div class="list-group-item {% if master.slaves.is_healthy() %}list-group-item-success{% endif %}{% if master.slaves.is_degraded() %}list-group-item-warning{% endif %}{% if master.slaves.is_down() %}list-group-item-danger{% endif %}">
+              <strong>Slaves</strong>
+              <span class="badge">{{ master.slaves|length }}</span>
             </div>
-            <div class="panel-body">
-              <div class="row">
-                {% for slave in master.slaves %}
-                <div class="col-md-6">
-                  <p {% if slave.is_down() %}class="text-danger"{% endif %}>{{ slave.hostname }} ({{ slave.unique_name }})</p>
-                </div>
-                {% endfor %}
-              </div>
+            {% for slave in master.slaves %}
+            <div class="list-group-item">
+              <p {% if slave.is_down() %}class="text-danger"{% endif %}>{{ slave.hostname }} ({{ slave.unique_name }})</p>
             </div>
+            {% endfor %}  
           </div>
+          
 
           <!-- Sentinels -->
-          <div class="panel {% if master.sentinels.is_healthy() %}panel-default{% endif %}{% if master.sentinels.is_degraded() %}panel-warning{% endif %}{% if master.sentinels.is_down() %}panel-danger{% endif %}">
-            <div class="panel-heading">
-              <h4 class="panel-title">Sentinels</h4>
+          <div class="list-group">
+            <div class="list-group-item {% if master.sentinels.is_healthy() %}list-group-item-success{% endif %}{% if master.sentinels.is_degraded() %}list-group-item-warning{% endif %}{% if master.sentinels.is_down() %}list-group-item-danger{% endif %}">
+              <strong>Sentinels</strong>
+              <span class="badge">{{ master.sentinels|length }}</span>
             </div>
-            <div class="panel-body">
-              <div class="row">
-                {% for sentinel in master.sentinels %}
-                <div  class="col-md-6">
-                  <p {% if sentinel.is_down() %}class="text-danger"{% endif %}>{{ sentinel.hostname }} ({{ sentinel.unique_name }})</p>
-                </div>
-                {% endfor %}
-              </div>
+            {% for sentinel in master.sentinels %}
+            <div class="list-group-item">
+              <p {% if sentinel.is_down() %}class="text-danger"{% endif %}>{{ sentinel.hostname }} ({{ sentinel.unique_name }})</p>
             </div>
+            {% endfor %}
           </div>
         </div>
       </div>
     </div>
-  </div>
 {% endfor %}
+  </div>
 {% endblock masters_data %}

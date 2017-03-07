@@ -22,4 +22,7 @@ WORKDIR /opt/app
 RUN apk add g++ make libffi-dev && \
 	pip install -r requirements/dev.txt && \
 	apk del g++ make libffi-dev && \
-	rm -rf /var/cache/apk/* 
+	rm -rf /var/cache/apk/*
+
+# Copy code
+COPY . /opt/app	
