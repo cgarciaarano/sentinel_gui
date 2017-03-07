@@ -37,7 +37,7 @@ class HealthLevel(IntEnum):
         elif self is HealthLevel.degraded:
             return 'Degraded'
         elif self is HealthLevel.healthy:
-            return 'Ok'
+            return 'Healthy'
 
 
 class Node(object):
