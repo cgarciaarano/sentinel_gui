@@ -5,27 +5,27 @@
   <!-- Master grid-->
   <div class="row">
     <div  class="col-md-7">
-      <div class="panel panel-default">
+      <div class="panel {% if master.is_healthy() %}panel-default{% endif %}{% if master.is_degraded() %}panel-warning{% endif %}{% if master.is_down() %}panel-danger{% endif %}">
         <div class="panel-heading">
-          <h3 class="panel-title" id="master_{{ master.name }}">{{ master.name }}</h3>
+          <h3 class="panel-title">{{ master.unique_name }}</h3>
         </div>
         <!-- Master node -->
         <div class="panel-body">
-          <div class="panel panel-default">
+          <div class="panel {% if master.master_node.is_healthy() %}panel-default{% endif %}{% if master.master_node.is_down() %}panel-danger{% endif %}">
             <div class="panel-heading">
               <h4 class="panel-title">Master Node</h4>
             </div>
             <div class="panel-body">
               <div class="row">
                 <div class="col-md-6">
-                  <span id="masternode_{{ master.master_node.id }}">{{ master.master_node.unique_name }}</span>
+                  <p {% if master.master_node.is_down() %}class="text-danger"{% endif %}>{{ master.master_node.hostname }} ({{ master.master_node.unique_name }})</p>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Slaves -->
-          <div class="panel panel-default">
+          <div class="panel {% if master.slaves.is_healthy() %}panel-default{% endif %}{% if master.slaves.is_degraded() %}panel-warning{% endif %}{% if master.slaves.is_down() %}panel-danger{% endif %}">
             <div class="panel-heading">
               <h4 class="panel-title">Slaves</h4>
             </div>
@@ -33,7 +33,7 @@
               <div class="row">
                 {% for slave in master.slaves %}
                 <div class="col-md-6">
-                  <span id="slave_{{ slave.id }}">{{ slave.unique_name }}</span>
+                  <p {% if slave.is_down() %}class="text-danger"{% endif %}>{{ slave.hostname }} ({{ slave.unique_name }})</p>
                 </div>
                 {% endfor %}
               </div>
@@ -41,7 +41,7 @@
           </div>
 
           <!-- Sentinels -->
-          <div class="panel panel-default">
+          <div class="panel {% if master.sentinels.is_healthy() %}panel-default{% endif %}{% if master.sentinels.is_degraded() %}panel-warning{% endif %}{% if master.sentinels.is_down() %}panel-danger{% endif %}">
             <div class="panel-heading">
               <h4 class="panel-title">Sentinels</h4>
             </div>
@@ -49,7 +49,7 @@
               <div class="row">
                 {% for sentinel in master.sentinels %}
                 <div  class="col-md-6">
-                  <span id="sentinel_{{ sentinel.id }}">{{ sentinel.unique_name }}</span>
+                  <p {% if sentinel.is_down() %}class="text-danger"{% endif %}>{{ sentinel.hostname }} ({{ sentinel.unique_name }})</p>
                 </div>
                 {% endfor %}
               </div>
