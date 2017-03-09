@@ -37,9 +37,8 @@ def index():
     return render_template('index.html', form=form, title='Home')
 
 
-@app.route('/update', methods=['POST'])
-def update():
-    sentinel_manager.update()
+@app.route('/refresh', methods=['POST'])
+def refresh():
 
     return render_template('masters_data.html', title='Home', manager=sentinel_manager)
 

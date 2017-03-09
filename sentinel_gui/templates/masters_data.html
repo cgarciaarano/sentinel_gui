@@ -5,7 +5,7 @@
   <div class="row">
   {% for master in manager.masters %}
 
-    <div  class="col-md-3">
+    <div  class="col-md-4">
       <div class="panel panel-default">
         <div class="panel-heading">
           <div class="panel-title"><strong>{{ master.unique_name }}</strong>
@@ -18,8 +18,8 @@
             <div class="list-group-item {% if master.master_node.is_healthy() %}list-group-item-success{% endif %}{% if master.master_node.is_down() %}list-group-item-danger{% endif %}">
                 <strong>Master Node</strong>
             </div>
-            <div class="list-group-item">
-                <p {% if master.master_node.is_down() %}class="text-danger"{% endif %}>{{ master.master_node.hostname }} ({{ master.master_node.unique_name }})</p>
+            <div class="list-group-item {% if master.master_node.is_down() %}list-group-item-danger{% endif %}">
+                <p>{{ master.master_node.hostname }} ({{ master.master_node.unique_name }})</p>
             </div>
           </div>
 
@@ -30,8 +30,8 @@
               <span class="badge">{{ master.slaves|length }}</span>
             </div>
             {% for slave in master.slaves %}
-            <div class="list-group-item">
-              <p {% if slave.is_down() %}class="text-danger"{% endif %}>{{ slave.hostname }} ({{ slave.unique_name }})</p>
+            <div class="list-group-item {% if slave.is_down() %}list-group-item-danger{% endif %}">
+              <p>{{ slave.hostname }} ({{ slave.unique_name }})</p>
             </div>
             {% endfor %}  
           </div>
@@ -44,8 +44,8 @@
               <span class="badge">{{ master.sentinels|length }}</span>
             </div>
             {% for sentinel in master.sentinels %}
-            <div class="list-group-item">
-              <p {% if sentinel.is_down() %}class="text-danger"{% endif %}>{{ sentinel.hostname }} ({{ sentinel.unique_name }})</p>
+            <div class="list-group-item {% if sentinel.is_down() %}list-group-item-danger{% endif %}">
+              <p>{{ sentinel.hostname }} ({{ sentinel.unique_name }})</p>
             </div>
             {% endfor %}
           </div>

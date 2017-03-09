@@ -18,6 +18,7 @@ from contextlib import contextmanager
 # 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
+from redis._compat import nativestr
 
 # local
 #from sentinel_gui.core.helpers import redis_warn
@@ -261,7 +262,8 @@ class SentinelNode(Redis):
 class SentinelMaster(Node):
 
     """
-    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, and a group of SentinelNodes, and metadata
+    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, a group of SentinelNodes, 
+    a pubsub connection to any active sentinel and metadata
     """
 
     def __init__(self, name):
@@ -273,6 +275,10 @@ class SentinelMaster(Node):
         self.master_node = None
         self.slaves = Cluster()
         self.sentinels = Cluster()
+
+        # Pubsub connection to any sentinel
+        self.listener = None
+        self.listen_thread = None
 
     def serialize(self):
         json_info = {
@@ -355,6 +361,39 @@ class SentinelMaster(Node):
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
 
+    def set_listener(self):
+        """
+        Establish a pubsub connection against the first active sentinel.
+        """
+        if self.listen_thread:
+            self.listen_thread.stop()
+
+        for sentinel in self.get_active_sentinels():
+            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
+            logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
+            self.listener.psubscribe(**{'*': self.process_sentinel_messages})
+            self.listen_thread = self.listener.run_in_thread(sleep_time=0.001)
+            break
+        else:
+            self.listener = None
+            self.listen_thread = None
+
+    def process_sentinel_messages(self, msg):
+        """
+        Process the pubsub messages from the active sentinel
+        """
+        # Parse response, as the library doesn't
+        msg = {k: nativestr(v) for k, v in msg.items()}
+
+        logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
+        logger.debug('{}'.format(nativestr(msg['channel'])))
+        if 'slave' in nativestr(msg['channel']):
+            logger.debug('{master}: Slave event received')
+            self.discover_slaves()
+        elif 'sentinel' in nativestr(msg['channel']):
+            logger.debug('{master}: Sentinel event received')
+            self.discover_sentinels()
+
     def add_sentinel(self, sentinel):
         """
         Add SentinelNode which are monitoring this master
@@ -364,12 +403,16 @@ class SentinelMaster(Node):
         # Add reference to the master in the sentinel node
         sentinel.link_master(self)
 
+        if not self.listener:
+            self.set_listener()
+
     def remove_sentinel(self, sentinel):
         """
         Remove sentinel host by reference
         """
         logger.info("{master}:Removing sentinel node {node}".format(master=self, node=sentinel))
         self.sentinels.remove(sentinel)
+        self.set_listener()
 
 
 class SentinelManager(object):

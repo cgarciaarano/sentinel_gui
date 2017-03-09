@@ -29,26 +29,38 @@
 
   <body>
     <nav class="navbar navbar-toggleable-md navbar-inverse bg-inverse fixed-top">
-      <a class="navbar-brand" href="#">Sentinel UI</a>
-    </nav>
-
-    <!-- Flashing messages -->
-    {% with messages = get_flashed_messages() %}
-      {% if messages %}
-        {% for message in messages %}
-            <div class="alert alert-info alert-dismissible" role="alert">
-                <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
-                {{ message }}
-            </div>
-        {% endfor %}
-
-      {% endif %}
-    {% endwith %}
-
-    <div class="container-fluid">
-      <div class="starter-template">
-        {% block index %}{% endblock index %}
+      <div class="container">
+        <a class="navbar-brand" href="#">Sentinel UI</a>
+        <ul class="nav navbar-nav">
+          <li>
+            <a href="/index">Home</a>
+          </li>
+          <li>
+            <a href="#" data-toggle="modal" data-target="#addNodeModal" data-keyboard="true" data-focus="true">Add Sentinel</a>
+          </li>
+          <li>
+            <a href="/reset">Reset</a>
+          </li>
+        </ul>
       </div>
+    </nav>
+    <!-- Button trigger modal -->
+    
+    <div class="container">
+      <!-- Flashing messages -->
+      {% with messages = get_flashed_messages() %}
+        {% if messages %}
+          {% for message in messages %}
+              <div class="alert alert-info alert-dismissible" role="alert">
+                  <button type="button" class="close" data-dismiss="alert" aria-label="Close"><span aria-hidden="true">&times;</span></button>
+                  {{ message }}
+              </div>
+          {% endfor %}
+
+        {% endif %}
+      {% endwith %}
+
+      {% block index %}{% endblock index %}
     </div>
 
 
@@ -63,7 +75,7 @@
     <script src="/static/js/ie10-viewport-bug-workaround.js"></script>
     <script>
     function update_manager() {
-        $.post('/update', function(content) {
+        $.post('/refresh', function(content) {
             console.log(content);
             $('#manager').html(content);
             });
