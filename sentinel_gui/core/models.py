@@ -369,7 +369,7 @@ class SentinelMaster(Node):
             self.listen_thread.stop()
 
         for sentinel in self.get_active_sentinels():
-            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
+            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True, decode_responses=True)
             logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
             self.listener.psubscribe(**{'*': self.process_sentinel_messages})
             self.listen_thread = self.listener.run_in_thread(sleep_time=0.001)
@@ -382,8 +382,9 @@ class SentinelMaster(Node):
         """
         Process the pubsub messages from the active sentinel
         """
+        # Using decode_responses!!
         # Parse response, as the library doesn't
-        msg = {k: nativestr(v) for k, v in msg.items()}
+        #msg = {k: nativestr(v) for k, v in msg.items()}
 
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
         logger.debug('{}'.format(nativestr(msg['channel'])))
