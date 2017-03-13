@@ -172,7 +172,7 @@ class Redis(Node):
 
     def reconnect(self):
         """Connect to Redis"""
-        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, **self.kwargs)
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, decode_responses=True, **self.kwargs)
 
         if self.ping():
             logger.info('Connected to Redis {0}'.format(self))
@@ -262,7 +262,7 @@ class SentinelNode(Redis):
 class SentinelMaster(Node):
 
     """
-    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, a group of SentinelNodes, 
+    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, a group of SentinelNodes,
     a pubsub connection to any active sentinel and metadata
     """
 
@@ -319,6 +319,8 @@ class SentinelMaster(Node):
         self.discover_slaves()
         self.discover_sentinels()
 
+        logger.debug('{master}:Current status:{sep}{data}'.format(master=self, sep=os.linesep, data=pformat(self.serialize())))
+
     def get_active_sentinels(self):
         return (sentinel for sentinel in self.sentinels if sentinel.is_active())
 
@@ -369,7 +371,8 @@ class SentinelMaster(Node):
             self.listen_thread.stop()
 
         for sentinel in self.get_active_sentinels():
-            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True, decode_responses=True)
+            # decode_responses needed to parse pubsub messages
+            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
             logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
             self.listener.psubscribe(**{'*': self.process_sentinel_messages})
             self.listen_thread = self.listener.run_in_thread(sleep_time=0.001)
@@ -382,16 +385,11 @@ class SentinelMaster(Node):
         """
         Process the pubsub messages from the active sentinel
         """
-        # Using decode_responses!!
-        # Parse response, as the library doesn't
-        #msg = {k: nativestr(v) for k, v in msg.items()}
-
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
-        logger.debug('{}'.format(nativestr(msg['channel'])))
-        if 'slave' in nativestr(msg['channel']):
+        if 'slave' in msg['channel']:
             logger.debug('{master}: Slave event received')
             self.discover_slaves()
-        elif 'sentinel' in nativestr(msg['channel']):
+        elif 'sentinel' in msg['channel']:
             logger.debug('{master}: Sentinel event received')
             self.discover_sentinels()
 
@@ -465,5 +463,3 @@ class SentinelManager(object):
         for master in self.masters:
             # Perform discovery on the given master
             master.discover()
-
-        logger.debug('Current status:{0}{1}'.format(os.linesep, pformat(self.serialize())))

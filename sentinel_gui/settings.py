@@ -1,2 +1,3 @@
 WTF_CSRF_ENABLED = True
 SECRET_KEY = 'you-will-never-guess'
+REDIS_SOCKET_TIMEOUT = 0.5
