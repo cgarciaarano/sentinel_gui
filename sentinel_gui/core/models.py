@@ -14,10 +14,12 @@ from pprint import pformat
 from functools import reduce
 from enum import IntEnum
 from contextlib import contextmanager
+import re
 
 # 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
+from redis._compat import nativestr
 
 # local
 from sentinel_gui.web import socketio
@@ -41,6 +43,7 @@ class HealthLevel(IntEnum):
 
 
 class Node(object):
+
     def __repr__(self):
         """ Object representation"""
         return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
@@ -100,7 +103,7 @@ class Cluster(set):
          - degraded: Any other case
         """
         if self:
-            aggr = (reduce(lambda x, y: x + y, map(lambda x: x.get_health(), self))/(len(self)))
+            aggr = (reduce(lambda x, y: x + y, map(lambda x: x.get_health(), self)) / (len(self)))
 
             if aggr == HealthLevel.down:
                 return HealthLevel.down
@@ -378,7 +381,7 @@ class SentinelMaster(Node):
             self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
             logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
             self.listener.psubscribe(**{'*': self.process_sentinel_messages})
-            self.listen_thread = self.listener.run_in_thread(sleep_time=0.001)
+            self.listen_thread = self.listener.run_in_thread(sleep_time=0.01)
             break
         else:
             self.listener = None
@@ -388,15 +391,79 @@ class SentinelMaster(Node):
         """
         Process the pubsub messages from the active sentinel
         """
+        # Parse response, as the library doesn't
+        msg = {k: nativestr(v) for k, v in msg.items()}
+
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
-        if 'slave'.encode('utf-8') in msg['channel']:
-            logger.debug('{master}: Slave event received')
-            self.discover_slaves()
-        elif 'sentinel'.encode('utf-8') in msg['channel']:
-            logger.debug('{master}: Sentinel event received')
-            self.discover_sentinels()
+
+        mapping = {
+            '+reset-master': self.discover,
+            '+slave': self.discover_slaves,
+            '+failover-state-reconf-slave': None,
+            '+failover-detected': None,
+            '+slave-reconf-sent': None,
+            '+slave-reconf-inprog': None,
+            '+slave-reconf-doner': None,
+            '-dup-sentinel': None,
+            '+sentinel': self.discover_sentinels,
+            '+sdown': self.discover,
+            '-sdown': self.discover,
+            '+odown': None,
+            '-odown': None,
+            '+new-epoch': None,
+            '+try-failover': None,
+            '+elected-leader': None,
+            '+failover-state-select-slaven': None,
+            'no-good-slave': None,
+            'selected-slave': None,
+            'failover-state-send-slaveof-noone': None,
+            'failover-end-for-timeout': None,
+            'failover-end': None,
+            'switch-master': self.discover,
+            '+tilt': None,
+            '-tilt': None,
+            '+fix-slave-config': None,
+        }
+
+        # Event known
+        event = msg['channel']
+        if event in mapping.keys():
+            # Event imlemented
+            if mapping[event] is not None:
+                data = self.parse_msg(msg['data'])
+                # If the message is for this object
+
+                if 'master-name' in data.keys() and data['master-name'] and self.unique_name == data['master-name']:
+                    logger.debug('{master}: Executing function for event {e}'.format(master=self, e=event))
+                    mapping[event]()
+                else:
+                    logger.debug('{master}: Ignoring event {e} for another master'.format(master=self, e=event))
+            else:
+                logger.warning('{master}: Event {e} not implemented'.format(master=self, e=event))
         else:
-            logger.debug('{master}: Event ignored')
+            logger.error('{master}: Event {e} unkwown'.format(master=self, e=event))
+
+    def parse_msg(self, msg):
+        """
+        Parse data from pubsub sentinel message
+
+        Returns a dict
+        """
+        pattern = re.compile('^(?P<role>\w*) (?P<name>(\d+\.?)+:\d+) (?P<ip>(\d+\.?)+) (?P<port>\d+)( @ (?P<mastername>\w*) (?P<masterip>(\d+\.?)+) (?P<masterport>\d+))?')
+        m = pattern.match(msg)
+
+        result = {}
+        if m:
+            result['role'] = m.group('role')
+            result['name'] = m.group('name')
+            result['ip'] = m.group('ip')
+            result['port'] = m.group('port')
+            if m.group('mastername'):
+                result['master-name'] = m.group('mastername')
+                result['master-ip'] = m.group('masterip')
+                result['master-port'] = m.group('masterport')
+
+        return result
 
     def add_sentinel(self, sentinel):
         """
