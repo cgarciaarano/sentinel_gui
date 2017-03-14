@@ -18,10 +18,9 @@ from contextlib import contextmanager
 # 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
-from redis._compat import nativestr
 
 # local
-#from sentinel_gui.core.helpers import redis_warn
+from sentinel_gui.web import socketio
 
 logger = logging.getLogger('sentinel_gui')
 
@@ -344,6 +343,8 @@ class SentinelMaster(Node):
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_slave))
 
         self.slaves = new_slaves
+        socketio.emit("update_message", namespace='/test')
+        logger.debug('{master}: emit sent')
 
     def discover_sentinels(self):
         new_sentinels = Cluster()
@@ -362,6 +363,8 @@ class SentinelMaster(Node):
 
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
+        socketio.emit("update_message", namespace='/test')
+        logger.debug('{master}: emit sent')
 
     def set_listener(self):
         """
@@ -386,12 +389,14 @@ class SentinelMaster(Node):
         Process the pubsub messages from the active sentinel
         """
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
-        if 'slave' in msg['channel']:
+        if 'slave'.encode('utf-8') in msg['channel']:
             logger.debug('{master}: Slave event received')
             self.discover_slaves()
-        elif 'sentinel' in msg['channel']:
+        elif 'sentinel'.encode('utf-8') in msg['channel']:
             logger.debug('{master}: Sentinel event received')
             self.discover_sentinels()
+        else:
+            logger.debug('{master}: Event ignored')
 
     def add_sentinel(self, sentinel):
         """

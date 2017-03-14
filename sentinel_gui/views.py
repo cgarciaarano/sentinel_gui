@@ -9,7 +9,12 @@ from wtforms import StringField, IntegerField
 from wtforms.validators import DataRequired
 
 # local
-from sentinel_gui.web import app, sentinel_manager
+from sentinel_gui.web import app, socketio
+from sentinel_gui.core import models
+
+
+sentinel_manager = models.SentinelManager()
+#sentinel_manager.add_sentinel_node(host=os.getenv('SENTINEL_SERVER', 'localhost'), port=os.getenv('SENTINEL_PORT', 26379))
 
 logger = logging.getLogger('sentinel_gui')
 
@@ -40,7 +45,6 @@ def index():
 
 @app.route('/refresh', methods=['POST'])
 def refresh():
-
     return render_template('masters_data.html', title='Home', manager=sentinel_manager)
 
 
@@ -49,3 +53,14 @@ def reset():
     sentinel_manager.reset()
 
     return redirect(url_for('index'))
+
+
+# Websocket
+@socketio.on('connect', namespace='/test')
+def on_connect():
+    logger.debug("Received WS connection")
+
+
+@socketio.on('connection', namespace='/test')
+def on_connect():
+    logger.debug("WS connection successful")

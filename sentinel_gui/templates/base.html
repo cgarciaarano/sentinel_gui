@@ -78,21 +78,39 @@
     <script>
     function update_manager() {
         $.post('/refresh', function(content) {
-            console.log(content);
+            //console.log(content);
             $('#manager').html(content);
             });
         };
-    window.onload = update_manager
+    
+    //window.onload = update_manager
 
+    // Websocket
+    $(document).ready(function(){
+        namespace = '/test'; // change to an empty string to use the global namespace
+
+        // the socket.io documentation recommends sending an explicit package upon connection
+        // this is specially important when using the global namespace
+        var socket = io.connect('http://' + document.domain + ':' + location.port + namespace);
+        socket.on('connect', function() {
+            console.log("Connected to WS");
+            socket.emit('connection');
+        });
+
+        // event handler for server sent data
+        // Receives the masters data in HTML 
+        socket.on('update_message', function(){
+          console.log("Received update event");
+          update_manager()
+        });
+    });
+    
     // Autofocus
     $('#addNodeModal').on('shown.bs.modal', function () {
         $('#{{ form.host.id }}').focus()
-    })
-
-    var socket = io.connect('http://' + document.domain + ':' + location.port);
-    socket.on('connect', function() {
-      socket.emit('my event', {data: 'I\'m connected!'});
     });
+
+
     </script>
   </body>
 </html>
