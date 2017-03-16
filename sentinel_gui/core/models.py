@@ -21,7 +21,9 @@ from redis.exceptions import ConnectionError
 from redis._compat import nativestr
 
 # local
+from sentinel_gui import settings
 from sentinel_gui.core.health import Node, Cluster, HealthLevel
+from sentinel_gui.core.event import SentinelEvent
 from sentinel_gui.web import socketio
 
 logger = logging.getLogger('sentinel_gui')
@@ -32,7 +34,6 @@ class Redis(Node):
     """
     Represents a redis instance, it's a Redis connection and metadata. Base class.
     """
-    TIMEOUT = 0.5
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
         # Stored for reconnect
@@ -55,7 +56,7 @@ class Redis(Node):
 
         self.unique_name = '{host}:{port}'.format(host=self.host, port=self.port)
 
-        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, **self.kwargs)
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=settings.REDIS_SOCKET_TIMEOUT, **self.kwargs)
 
         # Test connection
         self.ping()
@@ -285,7 +286,7 @@ class SentinelMaster(Node):
             self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
             logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
             self.listener.psubscribe(**{'*': self.process_sentinel_messages})
-            self.listen_thread = self.listener.run_in_thread(sleep_time=0.01)
+            self.listen_thread = self.listener.run_in_thread(sleep_time=settings.REDIS_POLLING_PERIOD)
             break
         else:
             self.listener = None
@@ -295,11 +296,6 @@ class SentinelMaster(Node):
         """
         Process the pubsub messages from the active sentinel
         """
-        # Parse response, as the library doesn't
-        msg = {k: nativestr(v) for k, v in msg.items()}
-
-        logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
-
         mapping = {
             '+reset-master': self.discover,
             '+slave': self.discover_slaves,
@@ -329,45 +325,21 @@ class SentinelMaster(Node):
             '+fix-slave-config': None,
         }
 
-        # Event known
-        event = msg['channel']
-        if event in mapping.keys():
-            # Event imlemented
-            if mapping[event] is not None:
-                data = self.parse_msg(msg['data'])
-                # If the message is for this object
+        logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
+        event = SentinelEvent(msg)
 
-                if 'master-name' in data.keys() and data['master-name'] and self.unique_name == data['master-name']:
-                    logger.debug('{master}: Executing function for event {e}'.format(master=self, e=event))
-                    mapping[event]()
+        if event:
+            # The message is for this object?
+            if event.is_for(self.unique_name):
+                # It has implementation?
+                if event.channel in mapping.keys():
+                    event.run(mapping[event.channel])
                 else:
-                    logger.debug('{master}: Ignoring event {e} for another master'.format(master=self, e=event))
+                    logger.warning('{master}: Event {e} not implemented'.format(master=self, e=event))
             else:
-                logger.warning('{master}: Event {e} not implemented'.format(master=self, e=event))
+                logger.info('{master}: Ignoring event {e} for another master'.format(master=self, e=event))
         else:
-            logger.error('{master}: Event {e} unkwown'.format(master=self, e=event))
-
-    def parse_msg(self, msg):
-        """
-        Parse data from pubsub sentinel message
-
-        Returns a dict
-        """
-        pattern = re.compile('^(?P<role>\w*) (?P<name>(\d+\.?)+:\d+) (?P<ip>(\d+\.?)+) (?P<port>\d+)( @ (?P<mastername>\w*) (?P<masterip>(\d+\.?)+) (?P<masterport>\d+))?')
-        m = pattern.match(msg)
-
-        result = {}
-        if m:
-            result['role'] = m.group('role')
-            result['name'] = m.group('name')
-            result['ip'] = m.group('ip')
-            result['port'] = m.group('port')
-            if m.group('mastername'):
-                result['master-name'] = m.group('mastername')
-                result['master-ip'] = m.group('masterip')
-                result['master-port'] = m.group('masterport')
-
-        return result
+            logger.error('{master}: Message unkwown: {m}'.format(master=self, m=msg))
 
     def add_sentinel(self, sentinel):
         """

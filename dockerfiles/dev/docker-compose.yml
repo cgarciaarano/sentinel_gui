@@ -43,7 +43,7 @@ services:
       dockerfile: dockerfiles/dev/sentinel/Dockerfile
     image: cgarciaarano/redis-sentinel:dev
     depends_on: 
-      - redis-master
+      - redis-slave
     expose:
       - "26379"
     command: redis-sentinel /etc/redis/sentinel.conf
