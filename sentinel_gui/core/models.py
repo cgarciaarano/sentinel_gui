@@ -11,14 +11,11 @@ import socket
 import os
 import logging
 from pprint import pformat
-from enum import IntEnum
 from contextlib import contextmanager
-import re
 
 # 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
-from redis._compat import nativestr
 
 # local
 from sentinel_gui import settings
@@ -68,7 +65,6 @@ class Redis(Node):
         return False
 
     def is_active(self):
-        # TODO Cache it somehow
         return self.active
 
     def get_health(self):
@@ -129,6 +125,11 @@ class SentinelNode(Redis):
         json_info['masters'] = [{'name': master.name} for master in self.masters]
 
         return json_info
+
+    def is_active(self):
+        """ A Sentinel node is active if it sees more sentinels than quorum-1"""
+        # TODO Implement
+        return self.active
 
     def discover_masters(self):
         """
@@ -229,7 +230,7 @@ class SentinelMaster(Node):
         logger.debug('{master}:Current status:{sep}{data}'.format(master=self, sep=os.linesep, data=pformat(self.serialize())))
 
     def get_active_sentinels(self):
-        return (sentinel for sentinel in self.sentinels if sentinel.is_active())
+        return [sentinel for sentinel in self.sentinels if sentinel.is_active()][0:1]
 
     def discover_master_node(self):
         # There's no master node defined yet
@@ -252,7 +253,7 @@ class SentinelMaster(Node):
 
         self.slaves = new_slaves
         socketio.emit("update_message", namespace='/test')
-        logger.debug('{master}: emit sent')
+        logger.debug('{master}: emit sent'.format(master=self))
 
     def discover_sentinels(self):
         new_sentinels = Cluster()
@@ -272,7 +273,7 @@ class SentinelMaster(Node):
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
         socketio.emit("update_message", namespace='/test')
-        logger.debug('{master}: emit sent')
+        logger.debug('{master}: emit sent'.format(master=self))
 
     def set_listener(self):
         """
@@ -306,8 +307,8 @@ class SentinelMaster(Node):
             '+slave-reconf-doner': None,
             '-dup-sentinel': None,
             '+sentinel': self.discover_sentinels,
-            '+sdown': self.discover,
-            '-sdown': self.discover,
+            '+sdown': None,
+            '-sdown': None,
             '+odown': None,
             '-odown': None,
             '+new-epoch': None,
@@ -390,15 +391,19 @@ class SentinelManager(object):
         sentinel = SentinelNode(host=host, port=port)
 
         # Discover masters in the given sentinel.
-        for master_name, _ in sentinel.discover_masters().items():
-            new_master = SentinelMaster(master_name)
-            self.masters.add(new_master)
+        masters = sentinel.discover_masters()
+        if masters:
+            for master_name in masters.keys():
+                new_master = SentinelMaster(master_name)
+                self.masters.add(new_master)
 
-            # Link sentinel to current master
-            new_master.add_sentinel(sentinel)
+                # Link sentinel to current master
+                new_master.add_sentinel(sentinel)
 
-            # Perform discovery on the given master
-            new_master.discover()
+                # Perform discovery on the given master
+                new_master.discover()
+            return True
+        return False
 
     def get_masters(self):
         self.update()

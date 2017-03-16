@@ -22,9 +22,6 @@ services:
     volumes:
       - ../../:/opt/app
     working_dir: /opt/app
-    depends_on: 
-      - sentinel
-      - redis-master
     command: flask run --host=0.0.0.0 --port=8080
 
   redis-master:

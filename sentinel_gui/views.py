@@ -34,8 +34,10 @@ def index():
     form = AddNodeForm()
     if form.validate_on_submit():
         try:
-            sentinel_manager.add_sentinel_node(host=form.host.data, port=form.port.data)
-            flash('Adding sentinel {0}:{1} from user request'.format(form.host.data, form.port.data))
+            if sentinel_manager.add_sentinel_node(host=form.host.data, port=form.port.data):
+                flash('Adding sentinel {0}:{1} from user request'.format(form.host.data, form.port.data))
+            else:
+                flash('Adding sentinel {0}:{1} failed'.format(form.host.data, form.port.data))
         except:
             flash('Adding sentinel {0}:{1} failed'.format(form.host.data, form.port.data))
             raise
@@ -46,6 +48,13 @@ def index():
 @app.route('/refresh', methods=['POST'])
 def refresh():
     return render_template('masters_data.html', title='Home', manager=sentinel_manager)
+
+
+@app.route('/update')
+def update():
+    sentinel_manager.reset()
+    sentinel_manager.update()
+    return redirect(url_for('index'))
 
 
 @app.route('/reset')
@@ -59,8 +68,3 @@ def reset():
 @socketio.on('connect', namespace='/test')
 def on_connect():
     logger.debug("Received WS connection")
-
-
-@socketio.on('connection', namespace='/test')
-def on_connect():
-    logger.debug("WS connection successful")

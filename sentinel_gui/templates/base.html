@@ -41,6 +41,9 @@
           <li>
             <a href="/reset">Reset</a>
           </li>
+          <li>
+            <a href="/update">Force Update</a>
+          </li>
         </ul>
       </div>
     </nav>
@@ -76,14 +79,14 @@
     <!-- IE10 viewport hack for Surface/desktop Windows 8 bug -->
     <script src="/static/js/ie10-viewport-bug-workaround.js"></script>
     <script>
-    function update_manager() {
+    function refresh_manager_view() {
         $.post('/refresh', function(content) {
             //console.log(content);
             $('#manager').html(content);
             });
         };
     
-    //window.onload = update_manager
+    window.onload = refresh_manager_view
 
     // Websocket
     $(document).ready(function(){
@@ -101,7 +104,7 @@
         // Receives the masters data in HTML 
         socket.on('update_message', function(){
           console.log("Received update event");
-          update_manager()
+          refresh_manager_view()
         });
     });
     
