@@ -6,6 +6,9 @@ Common utilities to handle core tasks, as decoding redis messages
 
     Redis Sentinel messages (from https://redis.io/topics/sentinel)
     ===============================================================
+
+    instance detail = <instance-type> <name> <ip> <port> @ <master-name> <master-ip> <master-port>
+
     +reset-master <instance details> -- The master was reset.
     +slave <instance details> -- A new slave was detected and attached.
     +failover-state-reconf-slaves <instance details> -- Failover state changed to reconf-slaves state.

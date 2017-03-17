@@ -52,7 +52,6 @@ def refresh():
 
 @app.route('/update')
 def update():
-    sentinel_manager.reset()
     sentinel_manager.update()
     return redirect(url_for('index'))
 

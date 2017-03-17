@@ -126,7 +126,7 @@ class SentinelNode(Redis):
 
         return json_info
 
-    def is_active(self):
+    def is_synced(self):
         """ A Sentinel node is active if it sees more sentinels than quorum-1"""
         # TODO Implement
         return self.active
@@ -230,11 +230,23 @@ class SentinelMaster(Node):
         logger.debug('{master}:Current status:{sep}{data}'.format(master=self, sep=os.linesep, data=pformat(self.serialize())))
 
     def get_active_sentinels(self):
-        return [sentinel for sentinel in self.sentinels if sentinel.is_active()][0:1]
+        """
+        Returns active Sentinels
+        """
+        return (sentinel for sentinel in self.sentinels if sentinel.is_active())
+
+    def get_synced_sentinel(self):
+        """
+        Returns one active and synced Sentinel
+        """
+        return [sentinel for sentinel in self.get_active_sentinels() if sentinel.is_synced()][0:1]
 
     def discover_master_node(self):
+        """
+        Discover master node, returning True if any change has been detected
+        """
         # There's no master node defined yet
-        for sentinel in self.get_active_sentinels():
+        for sentinel in self.get_synced_sentinel():
             master_data = sentinel.discover_master(self.name)
             # master_data could be None if the current sentinel is disconnected
             if master_data:
@@ -244,22 +256,26 @@ class SentinelMaster(Node):
                 logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
 
     def discover_slaves(self):
+        """
+        Discover slaves, returning True if any change has been detected
+        """
         new_slaves = Cluster()
-        for sentinel in self.get_active_sentinels():
+        for sentinel in self.get_synced_sentinel():
             for slave_data in sentinel.discover_slaves(self.name):
                 new_slave = Redis(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data)
                 new_slaves.add(new_slave)
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_slave))
 
         self.slaves = new_slaves
-        socketio.emit("update_message", namespace='/test')
-        logger.debug('{master}: emit sent'.format(master=self))
 
     def discover_sentinels(self):
+        """
+        Discover sentinels, returning True if any change has been detected
+        """
         new_sentinels = Cluster()
 
         # If all sentinels are down, this will retry reconnection
-        current_sentinels = self.get_active_sentinels()
+        current_sentinels = self.get_synced_sentinel()
         if not current_sentinels:
             logger.debug("{master}:All sentinels down, retrying connections".format(master=self))
             current_sentinels = self.sentinels
@@ -272,8 +288,6 @@ class SentinelMaster(Node):
 
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
-        socketio.emit("update_message", namespace='/test')
-        logger.debug('{master}: emit sent'.format(master=self))
 
     def set_listener(self):
         """
@@ -282,7 +296,7 @@ class SentinelMaster(Node):
         if self.listen_thread:
             self.listen_thread.stop()
 
-        for sentinel in self.get_active_sentinels():
+        for sentinel in self.get_synced_sentinel():
             # decode_responses needed to parse pubsub messages
             self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
             logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
@@ -341,6 +355,13 @@ class SentinelMaster(Node):
                 logger.info('{master}: Ignoring event {e} for another master'.format(master=self, e=event))
         else:
             logger.error('{master}: Message unkwown: {m}'.format(master=self, m=msg))
+
+    def notify(self):
+        """
+        Notify changes via WS
+        """
+        socketio.emit("update_message", namespace='/test')
+        logger.debug('{master}: emit sent'.format(master=self))
 
     def add_sentinel(self, sentinel):
         """

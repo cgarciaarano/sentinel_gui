@@ -16,6 +16,12 @@ from enum import IntEnum
 
 
 class HealthLevel(IntEnum):
+    """
+    Representation of health level of a Node/Cluster.
+
+    A Node can be healthy or down, whereas a Cluster could
+    be healthy, down or degraded, depending on its members.
+    """
     down = 0
     degraded = 1
     healthy = 2
@@ -31,6 +37,13 @@ class HealthLevel(IntEnum):
 
 
 class Node(object):
+    """
+    A Node has health information and comparision operators. Two nodes will be equal if
+    they have the same name. CAUTION, we can have two equal nodes, but with different
+    metainformation, depending of the time that we observed each Node.
+
+    We will use this comparision to store Nodes in sets (Cluster indeed, see below).
+    """
 
     def __repr__(self):
         """ Object representation"""
@@ -63,7 +76,10 @@ class Node(object):
 
 
 class Cluster(set):
-
+    """
+    Set type to store Nodes. It can calculate health information
+    of the Cluster based on its members
+    """
     def __repr__(self):
         """ Object representation"""
         return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))

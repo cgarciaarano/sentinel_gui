@@ -97,7 +97,6 @@
         var socket = io.connect('http://' + document.domain + ':' + location.port + namespace);
         socket.on('connect', function() {
             console.log("Connected to WS");
-            socket.emit('connection');
         });
 
         // event handler for server sent data
