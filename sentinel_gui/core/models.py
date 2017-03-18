@@ -254,6 +254,8 @@ class SentinelMaster(Node):
                 logger.debug("{master}:New master {n}".format(master=self, n=new_master))
                 self.master_node = new_master
                 logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
+        # FIXME
+        self.notify()
 
     def discover_slaves(self):
         """
@@ -267,6 +269,8 @@ class SentinelMaster(Node):
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_slave))
 
         self.slaves = new_slaves
+        # FIXME
+        self.notify()
 
     def discover_sentinels(self):
         """
@@ -286,8 +290,11 @@ class SentinelMaster(Node):
                 new_sentinels.add(new_sentinel)
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_sentinel))
 
+        # FIXME If a sentinel dies, the update is not inserted, so it doesn't reflect the down state
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
+        # FIXME
+        self.notify()
 
     def set_listener(self):
         """
@@ -341,19 +348,11 @@ class SentinelMaster(Node):
         }
 
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
-        event = SentinelEvent(msg)
+        event = SentinelEvent(msg, src=self.unique_name)
 
-        if event:
-            # The message is for this object?
-            if event.is_for(self.unique_name):
-                # It has implementation?
-                if event.channel in mapping.keys():
-                    event.run(mapping[event.channel])
-                else:
-                    logger.warning('{master}: Event {e} not implemented'.format(master=self, e=event))
-            else:
-                logger.info('{master}: Ignoring event {e} for another master'.format(master=self, e=event))
-        else:
+        try:
+            event.run(mapping.get(event.channel, None))
+        except:
             logger.error('{master}: Message unkwown: {m}'.format(master=self, m=msg))
 
     def notify(self):

@@ -48,28 +48,116 @@ from redis._compat import nativestr
 logger = logging.getLogger('sentinel_gui')
 
 
+def _parse_default(message):
+    """
+    Parse the instance detail, as it's the defaault in most messages
+    """
+    (role, node_name, node_ip, node_port, master_name, master_ip, master_port) = (None, None, None, None, None, None, None)
+
+    pattern = re.compile('^(?P<role>\w*) (?P<node_name>(\d+\.?)+:\d+|\w+) (?P<ip>(\d+\.?)+) (?P<port>\d+)( @ (?P<mastername>\w*) (?P<masterip>(\d+\.?)+) (?P<masterport>\d+))?')
+    m = pattern.match(message)
+
+    if m:
+        role = m.group('role')
+        node_name = m.group('node_name')
+        node_ip = m.group('ip')
+        node_port = m.group('port')
+        # If the role is not master, it has @ section
+        if m.group('mastername'):
+            master_name = m.group('mastername')
+            master_ip = m.group('masterip')
+            master_port = m.group('masterport')
+        # The role is master, the @ section is ommited in message
+        else:
+            master_name = m.group('node_name')
+            master_ip = m.group('ip')
+            master_port = m.group('port')
+
+    return (role, node_name, node_ip, node_port, master_name, master_ip, master_port)
+
+
+def _parse_switch_master(message):
+    """
+    Parse switch_master message
+    """
+    (role, node_name, node_ip, node_port, master_name, master_ip, master_port) = (None, None, None, None, None, None, None)
+
+    pattern = re.compile('(?P<mastername>\w*) (?P<oldmasterip>(\d+\.?)+) (?P<oldmasterport>\d+) (?P<newmasterip>(\d+\.?)+) (?P<newmasterport>\d+)')
+    m = pattern.match(message)
+
+    if m:
+        self.role = 'master'
+        self.node_name = m.group('mastername')
+        self.node_ip = m.group('newmasterip')
+        self.node_port = m.group('newmasterport')
+        self.master_name = m.group('mastername')
+        self.master_ip = m.group('newmasterip')
+        self.master_port = m.group('newmasterport')
+
+    return (role, node_name, node_ip, node_port, master_name, master_ip, master_port)
+
+
 class SentinelEvent(object):
 
-    def __init__(self, message):
+    PARSE_CALLBACKS = {
+        '+reset-master': _parse_default,
+        '+slave': _parse_default,
+        '+failover-state-reconf-slave': _parse_default,
+        '+failover-detected': _parse_default,
+        '+slave-reconf-sent': _parse_default,
+        '+slave-reconf-inprog': _parse_default,
+        '+slave-reconf-doner': _parse_default,
+        '-dup-sentinel': _parse_default,
+        '+sentinel': _parse_default,
+        '+sdown': _parse_default,
+        '-sdown': _parse_default,
+        '+odown': _parse_default,
+        '-odown': _parse_default,
+        '+new-epoch': _parse_default,
+        '+try-failover': _parse_default,
+        '+elected-leader': _parse_default,
+        '+failover-state-select-slaven': _parse_default,
+        'no-good-slave': _parse_default,
+        'selected-slave': _parse_default,
+        'failover-state-send-slaveof-noone': _parse_default,
+        'failover-end-for-timeout': _parse_default,
+        'failover-end': _parse_default,
+        'switch-master': _parse_switch_master,
+        '+tilt': None,
+        '-tilt': None,
+        '+fix-slave-config': _parse_default,
+    }
+
+    def __init__(self, message, src):
         self._callback = None
 
+        # Clean message from Redis, as the library did not do it
         message = {k: nativestr(v) for k, v in message.items()}
 
         self.channel = message['channel']
+        self.src_master = src
+
+        # Get payload from message
         try:
-            # Parse response, as the library doesn't
             self._data = message['data']
         except:
             logger.error("Can't create event from {e}".format(e=message))
             raise
 
+        # Check for parsing implementation for this event
+        if self.channel not in self.__class__.PARSE_CALLBACKS.keys():
+            raise NotImplementedError("Event {0} is not implemented".format(self.channel))
+
+        # Initialize attribs
         self.role = None
-        self.name = None
-        self.ip = None
-        self.port = None
+        self.node_name = None
+        self.node_ip = None
+        self.node_port = None
         self.master_name = None
         self.master_ip = None
         self.master_port = None
+        self.callbacks = self.__class__.PARSE_CALLBACKS
+        # Populate available attribs
         self._parse()
 
     def __repr__(self):
@@ -82,37 +170,14 @@ class SentinelEvent(object):
 
     def run(self, f):
         if f:
-            return f()
+            if self.is_for(self.src_master):
+                return f()
+            else:
+                logger.info("Ignoring event, emitted for another master")
 
     def _parse(self):
-        """
-        Parse sentinel message. There are messages with different responses
-        """
-        if self.channel == 'switch-master':
-            pattern = re.compile('(?P<mastername>\w*) (?P<oldmasterip>(\d+\.?)+) (?P<oldmasterport>\d+) (?P<newmasterip>(\d+\.?)+) (?P<newmasterport>\d+)')
-
-            m = pattern.match(self._data)
-
-            if m:
-                self.role = 'master'
-                self.name = m.group('mastername')
-                self.ip = m.group('newmasterip')
-                self.port = m.group('newmasterport')
-                self.master_name = m.group('mastername')
-
-        elif self.channel not in ('+tilt', '-tilt'):
-            pattern = re.compile('^(?P<role>\w*) (?P<name>(\d+\.?)+:\d+|\w+) (?P<ip>(\d+\.?)+) (?P<port>\d+)( @ (?P<mastername>\w*) (?P<masterip>(\d+\.?)+) (?P<masterport>\d+))?')
-            m = pattern.match(self._data)
-
-            if m:
-                self.role = m.group('role')
-                self.name = m.group('name')
-                self.ip = m.group('ip')
-                self.port = m.group('port')
-                if m.group('mastername'):
-                    self.master_name = m.group('mastername')
-                    self.master_ip = m.group('masterip')
-                    self.master_port = m.group('masterport')
+        # Populate attribs, if available
+        (self.role, self.node_name, self.node_ip, self.node_port, self.master_name, self.master_ip, self.master_port) = self.callbacks.get(self.channel)(message=self._data)
 
     def is_for(self, master_name):
-        return self.name and self.name == master_name
+        return self.master_name and self.master_name == master_name
