@@ -1,5 +1,5 @@
 # Sentinel configuration (is modified by Sentinel during runtime)
-sentinel.conf
+#sentinel.conf
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
@@ -90,3 +90,6 @@ ENV/
 
 # Rope project settings
 .ropeproject
+
+# Vagrant metadata
+.vagrant
