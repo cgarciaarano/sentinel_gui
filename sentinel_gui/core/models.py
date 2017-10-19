@@ -325,17 +325,17 @@ class SentinelMaster(Node):
             '+failover-detected': None,
             '+slave-reconf-sent': None,
             '+slave-reconf-inprog': None,
-            '+slave-reconf-doner': None,
+            '+slave-reconf-done': None,
             '-dup-sentinel': None,
             '+sentinel': self.discover_sentinels,
-            '+sdown': None,
+            '+sdown': self.discover,
             '-sdown': None,
             '+odown': None,
             '-odown': None,
             '+new-epoch': None,
             '+try-failover': None,
             '+elected-leader': None,
-            '+failover-state-select-slaven': None,
+            '+failover-state-select-slave': None,
             'no-good-slave': None,
             'selected-slave': None,
             'failover-state-send-slaveof-noone': None,
@@ -345,6 +345,7 @@ class SentinelMaster(Node):
             '+tilt': None,
             '-tilt': None,
             '+fix-slave-config': None,
+            '+reboot': self.discover,
         }
 
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))

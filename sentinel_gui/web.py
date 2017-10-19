@@ -7,16 +7,19 @@ from flask import Flask
 from flask_socketio import SocketIO
 
 # local
+from sentinel_gui import settings
 
 
 def setup_logging(app):
     logger = logging.getLogger('sentinel_gui')
-    logger.setLevel(logging.DEBUG)
-    lh = logging.StreamHandler()
-    lh.setLevel(logging.DEBUG)
-    lh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s'))
-    logger.addHandler(lh)
+    loglevel = logging.DEBUG if settings.DEBUG else logging.INFO
+    logger.setLevel(loglevel)
 
+    lh = logging.StreamHandler()
+    lh.setLevel(loglevel)
+    lh.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(name)s - %(message)s'))
+
+    logger.addHandler(lh)
     app.logger.addHandler(lh)
 
 app = Flask(__name__)
@@ -24,6 +27,8 @@ app.config.from_object('sentinel_gui.settings')
 setup_logging(app)
 socketio = SocketIO(app)
 
+from sentinel_gui.core import models
+sentinel_manager = models.SentinelManager()
 
 from sentinel_gui import views
 

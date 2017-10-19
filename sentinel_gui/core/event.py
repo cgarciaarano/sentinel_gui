@@ -97,6 +97,13 @@ def _parse_switch_master(message):
     return (role, node_name, node_ip, node_port, master_name, master_ip, master_port)
 
 
+def _parse_none(message):
+    """
+    No parsing
+    """
+    return (None, None, None, None, None, None, None)
+
+
 class SentinelEvent(object):
 
     PARSE_CALLBACKS = {
@@ -106,7 +113,7 @@ class SentinelEvent(object):
         '+failover-detected': _parse_default,
         '+slave-reconf-sent': _parse_default,
         '+slave-reconf-inprog': _parse_default,
-        '+slave-reconf-doner': _parse_default,
+        '+slave-reconf-done': _parse_default,
         '-dup-sentinel': _parse_default,
         '+sentinel': _parse_default,
         '+sdown': _parse_default,
@@ -116,37 +123,30 @@ class SentinelEvent(object):
         '+new-epoch': _parse_default,
         '+try-failover': _parse_default,
         '+elected-leader': _parse_default,
-        '+failover-state-select-slaven': _parse_default,
+        '+failover-state-select-slave': _parse_default,
         'no-good-slave': _parse_default,
         'selected-slave': _parse_default,
         'failover-state-send-slaveof-noone': _parse_default,
         'failover-end-for-timeout': _parse_default,
         'failover-end': _parse_default,
         'switch-master': _parse_switch_master,
-        '+tilt': None,
-        '-tilt': None,
+        '+tilt': _parse_none,
+        '-tilt': _parse_none,
         '+fix-slave-config': _parse_default,
+        '+vote-for-leader': _parse_none,
+        '+role-change': _parse_default,
+        '-role-change': _parse_default,
+        '+selected-slave': _parse_default,
+        '+failover-state-send-slaveof-noone': _parse_default,
+        '-failover-state-send-slaveof-noone': _parse_default,
+        '+failover-abort-no-good-slave': _parse_default,
+        '-failover-abort-no-good-slave': _parse_default,
+        '+reboot': _parse_default,
     }
 
     def __init__(self, message, src):
-        self._callback = None
-
         # Clean message from Redis, as the library did not do it
         message = {k: nativestr(v) for k, v in message.items()}
-
-        self.channel = message['channel']
-        self.src_master = src
-
-        # Get payload from message
-        try:
-            self._data = message['data']
-        except:
-            logger.error("Can't create event from {e}".format(e=message))
-            raise
-
-        # Check for parsing implementation for this event
-        if self.channel not in self.__class__.PARSE_CALLBACKS.keys():
-            raise NotImplementedError("Event {0} is not implemented".format(self.channel))
 
         # Initialize attribs
         self.role = None
@@ -157,8 +157,21 @@ class SentinelEvent(object):
         self.master_ip = None
         self.master_port = None
         self.callbacks = self.__class__.PARSE_CALLBACKS
-        # Populate available attribs
-        self._parse()
+        self.src_master = src
+        self.channel = message['channel']
+
+        # Check for parsing implementation for this event
+        if self.channel not in self.callbacks.keys():
+            raise NotImplementedError("Event {0} is not implemented".format(self.channel))
+
+        # Get payload from message
+        try:
+            # Populate available attribs
+            self._parse(message['data'])
+        except:
+            logger.error("Can't create event from {e}".format(e=message))
+            # FIXME, remove raise
+            raise
 
     def __repr__(self):
         """ Object representation"""
@@ -175,9 +188,9 @@ class SentinelEvent(object):
             else:
                 logger.info("Ignoring event, emitted for another master")
 
-    def _parse(self):
+    def _parse(self, data):
         # Populate attribs, if available
-        (self.role, self.node_name, self.node_ip, self.node_port, self.master_name, self.master_ip, self.master_port) = self.callbacks.get(self.channel)(message=self._data)
+        (self.role, self.node_name, self.node_ip, self.node_port, self.master_name, self.master_ip, self.master_port) = self.callbacks.get(self.channel)(message=data)
 
     def is_for(self, master_name):
         return self.master_name and self.master_name == master_name
