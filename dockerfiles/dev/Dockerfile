@@ -10,6 +10,8 @@ FROM python:3.4-alpine
 
 MAINTAINER cgarciaarano@gmail.com
 
+ENV FLASK_APP=sentinel_gui/web.py
+
 # Update the repository sources list
 RUN apk update && apk add redis
 
@@ -25,4 +27,6 @@ RUN apk add g++ make libffi-dev && \
 	rm -rf /var/cache/apk/*
 
 # Copy code
-COPY . /opt/app	
+COPY . /opt/app
+
+CMD flask run --host=0.0.0.0 --port=8080
