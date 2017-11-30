@@ -11,114 +11,19 @@ import socket
 import os
 import logging
 from pprint import pformat
-from functools import reduce
-from enum import IntEnum
 from contextlib import contextmanager
 
 # 3rd parties
 from redis import StrictRedis
 from redis.exceptions import ConnectionError
-from redis._compat import nativestr
 
 # local
-#from sentinel_gui.core.helpers import redis_warn
+from sentinel_gui import settings
+from sentinel_gui.core.health import Node, Cluster, HealthLevel
+from sentinel_gui.core.event import SentinelEvent
+from sentinel_gui.web import socketio
 
 logger = logging.getLogger('sentinel_gui')
-
-
-class HealthLevel(IntEnum):
-    down = 0
-    degraded = 1
-    healthy = 2
-
-    def __str__(self):
-        """ String representation host:port"""
-        if self is HealthLevel.down:
-            return 'Down'
-        elif self is HealthLevel.degraded:
-            return 'Degraded'
-        elif self is HealthLevel.healthy:
-            return 'Healthy'
-
-
-class Node(object):
-    def __repr__(self):
-        """ Object representation"""
-        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
-
-    def __str__(self):
-        """ String representation host:port"""
-        return self.unique_name
-
-    def __eq__(self, other):
-        if isinstance(other, Node):
-            return (self.unique_name == other.unique_name)
-        else:
-            return False
-
-    def __hash__(self):
-        return hash(self.unique_name)
-
-    def get_health(self):
-        pass
-
-    def is_healthy(self):
-        return self.get_health() is HealthLevel.healthy
-
-    def is_down(self):
-        return self.get_health() is HealthLevel.down
-
-    def is_degraded(self):
-        return self.get_health() is HealthLevel.degraded
-
-
-class Cluster(set):
-
-    def __repr__(self):
-        """ Object representation"""
-        return "<{0}('{1}')>".format(self.__class__.__name__, "', '".join(self.__dict__.values()))
-
-    def __str__(self):
-        """ String representation"""
-        return self.name
-
-    def __eq__(self, other):
-        """Object comparision"""
-        if isinstance(other, Cluster):
-            return (self.name == other.name)
-        else:
-            return False
-
-    def __hash__(self):
-        return hash(self.name)
-
-    def get_health(self):
-        """
-        Return HealthLevel of its members.
-
-         - down: All members are down
-         - healthy: All members are healthy
-         - degraded: Any other case
-        """
-        if self:
-            aggr = (reduce(lambda x, y: x + y, map(lambda x: x.get_health(), self))/(len(self)))
-
-            if aggr == HealthLevel.down:
-                return HealthLevel.down
-            elif aggr == HealthLevel.healthy:
-                return HealthLevel.healthy
-            else:
-                return HealthLevel.degraded
-        return HealthLevel.down
-
-    def is_healthy(self):
-        return self.get_health() is HealthLevel.healthy
-
-    def is_down(self):
-        return self.get_health() is HealthLevel.down
-
-    def is_degraded(self):
-        return self.get_health() is HealthLevel.degraded
 
 
 class Redis(Node):
@@ -126,7 +31,6 @@ class Redis(Node):
     """
     Represents a redis instance, it's a Redis connection and metadata. Base class.
     """
-    TIMEOUT = 0.5
 
     def __init__(self, host='localhost', port=6379, metadata={}, **kwargs):
         # Stored for reconnect
@@ -149,7 +53,7 @@ class Redis(Node):
 
         self.unique_name = '{host}:{port}'.format(host=self.host, port=self.port)
 
-        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, **self.kwargs)
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=settings.REDIS_SOCKET_TIMEOUT, **self.kwargs)
 
         # Test connection
         self.ping()
@@ -161,7 +65,6 @@ class Redis(Node):
         return False
 
     def is_active(self):
-        # TODO Cache it somehow
         return self.active
 
     def get_health(self):
@@ -172,7 +75,7 @@ class Redis(Node):
 
     def reconnect(self):
         """Connect to Redis"""
-        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, **self.kwargs)
+        self.conn = StrictRedis(host=self.host, port=self.port, socket_timeout=Redis.TIMEOUT, decode_responses=True, **self.kwargs)
 
         if self.ping():
             logger.info('Connected to Redis {0}'.format(self))
@@ -223,6 +126,11 @@ class SentinelNode(Redis):
 
         return json_info
 
+    def is_synced(self):
+        """ A Sentinel node is active if it sees more sentinels than quorum-1"""
+        # TODO Implement
+        return self.active
+
     def discover_masters(self):
         """
         Returns a dict of masters {'master1':  data, 'master2': data}.
@@ -262,7 +170,7 @@ class SentinelNode(Redis):
 class SentinelMaster(Node):
 
     """
-    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, a group of SentinelNodes, 
+    A Sentinel master is comprised of a master node Redis, optionally slaves Redis, a group of SentinelNodes,
     a pubsub connection to any active sentinel and metadata
     """
 
@@ -319,12 +227,26 @@ class SentinelMaster(Node):
         self.discover_slaves()
         self.discover_sentinels()
 
+        logger.debug('{master}:Current status:{sep}{data}'.format(master=self, sep=os.linesep, data=pformat(self.serialize())))
+
     def get_active_sentinels(self):
+        """
+        Returns active Sentinels
+        """
         return (sentinel for sentinel in self.sentinels if sentinel.is_active())
 
+    def get_synced_sentinel(self):
+        """
+        Returns one active and synced Sentinel
+        """
+        return [sentinel for sentinel in self.get_active_sentinels() if sentinel.is_synced()][0:1]
+
     def discover_master_node(self):
+        """
+        Discover master node, returning True if any change has been detected
+        """
         # There's no master node defined yet
-        for sentinel in self.get_active_sentinels():
+        for sentinel in self.get_synced_sentinel():
             master_data = sentinel.discover_master(self.name)
             # master_data could be None if the current sentinel is disconnected
             if master_data:
@@ -332,22 +254,32 @@ class SentinelMaster(Node):
                 logger.debug("{master}:New master {n}".format(master=self, n=new_master))
                 self.master_node = new_master
                 logger.info("{master}:Redis master node is now {node}".format(master=self, node=self.master_node))
+        # FIXME
+        self.notify()
 
     def discover_slaves(self):
+        """
+        Discover slaves, returning True if any change has been detected
+        """
         new_slaves = Cluster()
-        for sentinel in self.get_active_sentinels():
+        for sentinel in self.get_synced_sentinel():
             for slave_data in sentinel.discover_slaves(self.name):
                 new_slave = Redis(host=slave_data['ip'], port=slave_data['port'], metadata=slave_data)
                 new_slaves.add(new_slave)
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_slave))
 
         self.slaves = new_slaves
+        # FIXME
+        self.notify()
 
     def discover_sentinels(self):
+        """
+        Discover sentinels, returning True if any change has been detected
+        """
         new_sentinels = Cluster()
 
         # If all sentinels are down, this will retry reconnection
-        current_sentinels = self.get_active_sentinels()
+        current_sentinels = self.get_synced_sentinel()
         if not current_sentinels:
             logger.debug("{master}:All sentinels down, retrying connections".format(master=self))
             current_sentinels = self.sentinels
@@ -358,8 +290,11 @@ class SentinelMaster(Node):
                 new_sentinels.add(new_sentinel)
                 logger.info("{master}:New redis slave {node}".format(master=self, node=new_sentinel))
 
+        # FIXME If a sentinel dies, the update is not inserted, so it doesn't reflect the down state
         # We can't add new sentinels while looping self.sentinels
         [self.add_sentinel(sentinel) for sentinel in new_sentinels]
+        # FIXME
+        self.notify()
 
     def set_listener(self):
         """
@@ -368,11 +303,12 @@ class SentinelMaster(Node):
         if self.listen_thread:
             self.listen_thread.stop()
 
-        for sentinel in self.get_active_sentinels():
-            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True, decode_responses=True)
+        for sentinel in self.get_synced_sentinel():
+            # decode_responses needed to parse pubsub messages
+            self.listener = sentinel.conn.pubsub(ignore_subscribe_messages=True)
             logger.info('{master}:Subscribing to stream in sentinel {node}'.format(master=self, node=sentinel))
             self.listener.psubscribe(**{'*': self.process_sentinel_messages})
-            self.listen_thread = self.listener.run_in_thread(sleep_time=0.001)
+            self.listen_thread = self.listener.run_in_thread(sleep_time=settings.REDIS_POLLING_PERIOD)
             break
         else:
             self.listener = None
@@ -382,18 +318,50 @@ class SentinelMaster(Node):
         """
         Process the pubsub messages from the active sentinel
         """
-        # Using decode_responses!!
-        # Parse response, as the library doesn't
-        #msg = {k: nativestr(v) for k, v in msg.items()}
+        mapping = {
+            '+reset-master': self.discover,
+            '+slave': self.discover_slaves,
+            '+failover-state-reconf-slave': None,
+            '+failover-detected': None,
+            '+slave-reconf-sent': None,
+            '+slave-reconf-inprog': None,
+            '+slave-reconf-done': None,
+            '-dup-sentinel': None,
+            '+sentinel': self.discover_sentinels,
+            '+sdown': self.discover,
+            '-sdown': None,
+            '+odown': None,
+            '-odown': None,
+            '+new-epoch': None,
+            '+try-failover': None,
+            '+elected-leader': None,
+            '+failover-state-select-slave': None,
+            'no-good-slave': None,
+            'selected-slave': None,
+            'failover-state-send-slaveof-noone': None,
+            'failover-end-for-timeout': None,
+            'failover-end': None,
+            'switch-master': self.discover,
+            '+tilt': None,
+            '-tilt': None,
+            '+fix-slave-config': None,
+            '+reboot': self.discover,
+        }
 
         logger.debug('{master}: Message received: {msg}'.format(master=self, msg=msg))
-        logger.debug('{}'.format(nativestr(msg['channel'])))
-        if 'slave' in nativestr(msg['channel']):
-            logger.debug('{master}: Slave event received')
-            self.discover_slaves()
-        elif 'sentinel' in nativestr(msg['channel']):
-            logger.debug('{master}: Sentinel event received')
-            self.discover_sentinels()
+        event = SentinelEvent(msg, src=self.unique_name)
+
+        try:
+            event.run(mapping.get(event.channel, None))
+        except:
+            logger.error('{master}: Message unkwown: {m}'.format(master=self, m=msg))
+
+    def notify(self):
+        """
+        Notify changes via WS
+        """
+        socketio.emit("update_message", namespace='/test')
+        logger.debug('{master}: emit sent'.format(master=self))
 
     def add_sentinel(self, sentinel):
         """
@@ -444,15 +412,19 @@ class SentinelManager(object):
         sentinel = SentinelNode(host=host, port=port)
 
         # Discover masters in the given sentinel.
-        for master_name, _ in sentinel.discover_masters().items():
-            new_master = SentinelMaster(master_name)
-            self.masters.add(new_master)
+        masters = sentinel.discover_masters()
+        if masters:
+            for master_name in masters.keys():
+                new_master = SentinelMaster(master_name)
+                self.masters.add(new_master)
 
-            # Link sentinel to current master
-            new_master.add_sentinel(sentinel)
+                # Link sentinel to current master
+                new_master.add_sentinel(sentinel)
 
-            # Perform discovery on the given master
-            new_master.discover()
+                # Perform discovery on the given master
+                new_master.discover()
+            return True
+        return False
 
     def get_masters(self):
         self.update()
@@ -465,5 +437,3 @@ class SentinelManager(object):
         for master in self.masters:
             # Perform discovery on the given master
             master.discover()
-
-        logger.debug('Current status:{0}{1}'.format(os.linesep, pformat(self.serialize())))

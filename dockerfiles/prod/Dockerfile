@@ -10,6 +10,8 @@ FROM python:3.4-alpine
 
 MAINTAINER cgarciaarano@gmail.com
 
+ENV FLASK_APP=sentinel_gui/web.py
+
 # Update the repository sources list
 RUN apk update && apk add redis
 

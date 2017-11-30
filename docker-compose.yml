@@ -2,48 +2,41 @@
 # Docker Compose file to build DEV environment
 # for Vagrant
 ############################################################
-version: "2"
+version: "3.2"
 
 services:
   web:
     build:
-      context: ../../  # Root of project
+      context: ./  # Root of project
       dockerfile: dockerfiles/dev/Dockerfile
     image: cgarciaarano/sentinel_gui:dev
-    container_name: web
-    #env_file: ../../.env
     environment:
-      - SENTINEL_SERVER=sentinel
-      - SENTINEL_PORT=26379
       - FLASK_DEBUG=1
-      - FLASK_APP=sentinel_gui/web.py
+      - REDIS_SOCKET_TIMEOUT=0.3
     ports:
       - "8080:8080"
     volumes:
-      - ../../:/opt/app
+      - ./:/opt/app
     working_dir: /opt/app
-    depends_on: 
-      - sentinel
-      - redis-master
-    command: flask run --host=0.0.0.0 --port=8080
+    # command: flask run --host=0.0.0.0 --port=8080
 
-  redis-master:
+  master:
     image: redis:3.0-alpine
-    container_name: redis-master
+    container_name: master
 
-  redis-slave:
+  slave:
     image: redis:3.0-alpine
     depends_on: 
-      - redis-master
-    command: redis-server --slaveof redis-master 6379
+      - master
+    command: redis-server --slaveof master 6379
 
   sentinel:
     build:
-      context: ../../  # Root of project
+      context: ./  # Root of project
       dockerfile: dockerfiles/dev/sentinel/Dockerfile
     image: cgarciaarano/redis-sentinel:dev
     depends_on: 
-      - redis-master
+      - master
     expose:
       - "26379"
     command: redis-sentinel /etc/redis/sentinel.conf
