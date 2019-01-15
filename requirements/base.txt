@@ -1,5 +1,5 @@
 click==6.7
-Flask==0.12
+Flask==0.12.3
 Flask-SocketIO==2.8.5
 Flask-WTF==0.14.2
 hiredis==0.2.0
